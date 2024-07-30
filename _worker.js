@@ -214,6 +214,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 			safeCloseWebSocket(webSocketServer);
 		}
 	});
+	
 	return stream;
 }
 
