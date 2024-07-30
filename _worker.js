@@ -79,7 +79,7 @@ async function vlessOverWSHandler(request) {
 				if (portRemote === 53) {
 					isDns = true;
 				} else {
-					throw new Error('UDP proxy only enable for DNS which is port 53');
+					throw new Error('UDP dns only is port 53');
 				}
 			}
 			const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
@@ -92,8 +92,6 @@ async function vlessOverWSHandler(request) {
 			}
 			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
 		},
-		close() {},
-		abort(reason) {},
 	})).catch((err) => {});
 	return new Response(null, { status: 101, webSocket: client });
 }
@@ -156,9 +154,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
 
 function processVlessHeader(vlessBuffer, userID) {
 	if (vlessBuffer.byteLength < 24) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	const version = new Uint8Array(vlessBuffer.slice(0, 1));
 	let isValidUser = false;
@@ -167,9 +163,7 @@ function processVlessHeader(vlessBuffer, userID) {
 		isValidUser = true;
 	}
 	if (!isValidUser) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
 	const command = new Uint8Array(vlessBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
@@ -177,9 +171,7 @@ function processVlessHeader(vlessBuffer, userID) {
 	} else if (command === 2) {
 		isUDP = true;
 	} else {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	const portIndex = 18 + optLength;
 	const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
@@ -248,12 +240,9 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 						webSocket.send(chunk);
 					}
 				},
-				close() {},
-				abort(reason) {},
 			})
 		)
 		.catch(error => safeCloseWebSocket(webSocket));
-
 	if (hasIncomingData === false && retry) {
 		retry();
 	}
