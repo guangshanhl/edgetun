@@ -172,9 +172,7 @@ function processVlessHeader(
 	userID
 ) {
 	if (vlessBuffer.byteLength < 24) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	const version = new Uint8Array(vlessBuffer.slice(0, 1));
 	let isValidUser = false;
@@ -183,9 +181,7 @@ function processVlessHeader(
 		isValidUser = true;
 	}
 	if (!isValidUser) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
 	const command = new Uint8Array(
@@ -195,9 +191,7 @@ function processVlessHeader(
 	} else if (command === 2) {
 		isUDP = true;
 	} else {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	const portIndex = 18 + optLength + 1;
 	const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
@@ -238,14 +232,10 @@ function processVlessHeader(
 			addressValue = ipv6.join(':');
 			break;
 		default:
-			return {
-				hasError: true,
-			};
+			return { hasError: true };
 	}
 	if (!addressValue) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	return {
 		hasError: false,
@@ -375,7 +365,6 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
 	const writer = transformStream.writable.getWriter();
 	return { write: chunk => writer.write(chunk) };
 }
-
 function getVLESSConfig(userID, hostName) {
     return `
 ################################################################
