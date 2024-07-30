@@ -604,10 +604,8 @@ function isValidUUID(uuid) {
 	const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 	return uuidRegex.test(uuid);
 }
-
 const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
-
 /**
  * 安全地关闭 WebSocket 连接
  * 通常，WebSocket 在关闭时不会抛出异常，但为了以防万一，我们还是用 try-catch 包裹
@@ -674,12 +672,10 @@ async function handleDNSQuery(udpChunk, webSocket, vlessResponseHeader, log) {
         /** @type {ArrayBuffer | null} */
         let vlessHeader = vlessResponseHeader;
         /** @type {import("@cloudflare/workers-types").Socket} */
-
         const tcpSocket = connect({
             hostname: dnsServer,
             port: dnsPort,
         });
-
         log(`连接到 ${dnsServer}:${dnsPort}`);
         const writer = tcpSocket.writable.getWriter();
         await writer.write(udpChunk);
@@ -715,40 +711,17 @@ async function handleDNSQuery(udpChunk, webSocket, vlessResponseHeader, log) {
  */
 async function socks5Connect(addressType, addressRemote, portRemote, log) {
 	const { username, password, hostname, port } = parsedSocks5Address;
-	// 连接到 SOCKS5 代理服务器
 	const socket = connect({
 		hostname, // SOCKS5 服务器的主机名
 		port,    // SOCKS5 服务器的端口
 	});
-
-	// 请求头格式（Worker -> SOCKS5 服务器）:
-	// +----+----------+----------+
-	// |VER | NMETHODS | METHODS  |
-	// +----+----------+----------+
-	// | 1  |    1     | 1 to 255 |
-	// +----+----------+----------+
-
-	// https://en.wikipedia.org/wiki/SOCKS#SOCKS5
-	// METHODS 字段的含义:
-	// 0x00 不需要认证
-	// 0x02 用户名/密码认证 https://datatracker.ietf.org/doc/html/rfc1929
 	const socksGreeting = new Uint8Array([5, 2, 0, 2]);
-	// 5: SOCKS5 版本号, 2: 支持的认证方法数, 0和2: 两种认证方法（无认证和用户名/密码）
-
 	const writer = socket.writable.getWriter();
-
 	await writer.write(socksGreeting);
 	log('已发送 SOCKS5 问候消息');
-
 	const reader = socket.readable.getReader();
 	const encoder = new TextEncoder();
 	let res = (await reader.read()).value;
-	// 响应格式（SOCKS5 服务器 -> Worker）:
-	// +----+--------+
-	// |VER | METHOD |
-	// +----+--------+
-	// | 1  |   1    |
-	// +----+--------+
 	if (res[0] !== 0x05) {
 		log(`SOCKS5 服务器版本错误: 收到 ${res[0]}，期望是 5`);
 		return;
@@ -757,20 +730,12 @@ async function socks5Connect(addressType, addressRemote, portRemote, log) {
 		log("服务器不接受任何认证方法");
 		return;
 	}
-
-	// 如果返回 0x0502，表示需要用户名/密码认证
 	if (res[1] === 0x02) {
 		log("SOCKS5 服务器需要认证");
 		if (!username || !password) {
 			log("请提供用户名和密码");
 			return;
 		}
-		// 认证请求格式:
-		// +----+------+----------+------+----------+
-		// |VER | ULEN |  UNAME   | PLEN |  PASSWD  |
-		// +----+------+----------+------+----------+
-		// | 1  |  1   | 1 to 255 |  1   | 1 to 255 |
-		// +----+------+----------+------+----------+
 		const authRequest = new Uint8Array([
 			1,                   // 认证子协议版本
 			username.length,    // 用户名长度
@@ -780,30 +745,11 @@ async function socks5Connect(addressType, addressRemote, portRemote, log) {
 		]);
 		await writer.write(authRequest);
 		res = (await reader.read()).value;
-		// 期望返回 0x0100 表示认证成功
 		if (res[0] !== 0x01 || res[1] !== 0x00) {
 			log("SOCKS5 服务器认证失败");
 			return;
 		}
 	}
-
-	// 请求数据格式（Worker -> SOCKS5 服务器）:
-	// +----+-----+-------+------+----------+----------+
-	// |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
-	// +----+-----+-------+------+----------+----------+
-	// | 1  |  1  | X'00' |  1   | Variable |    2     |
-	// +----+-----+-------+------+----------+----------+
-	// ATYP: 地址类型
-	// 0x01: IPv4 地址
-	// 0x03: 域名
-	// 0x04: IPv6 地址
-	// DST.ADDR: 目标地址
-	// DST.PORT: 目标端口（网络字节序）
-
-	// addressType
-	// 1 --> IPv4  地址长度 = 4
-	// 2 --> 域名
-	// 3 --> IPv6  地址长度 = 16
 	let DSTADDR;	// DSTADDR = ATYP + DST.ADDR
 	switch (addressType) {
 		case 1: // IPv4
@@ -826,18 +772,9 @@ async function socks5Connect(addressType, addressRemote, portRemote, log) {
 			return;
 	}
 	const socksRequest = new Uint8Array([5, 1, 0, ...DSTADDR, portRemote >> 8, portRemote & 0xff]);
-	// 5: SOCKS5版本, 1: 表示CONNECT请求, 0: 保留字段
-	// ...DSTADDR: 目标地址, portRemote >> 8 和 & 0xff: 将端口转为网络字节序
 	await writer.write(socksRequest);
 	log('已发送 SOCKS5 请求');
-
 	res = (await reader.read()).value;
-	// 响应格式（SOCKS5 服务器 -> Worker）:
-	//  +----+-----+-------+------+----------+----------+
-	// |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
-	// +----+-----+-------+------+----------+----------+
-	// | 1  |  1  | X'00' |  1   | Variable |    2     |
-	// +----+-----+-------+------+----------+----------+
 	if (res[1] === 0x00) {
 		log("SOCKS5 连接已建立");
 	} else {
@@ -849,23 +786,15 @@ async function socks5Connect(addressType, addressRemote, portRemote, log) {
 	return socket;
 }
 
-
 /**
- * SOCKS5 代理地址解析器
- * 此函数用于解析 SOCKS5 代理地址字符串，提取出用户名、密码、主机名和端口号
- * 
  * @param {string} address SOCKS5 代理地址，格式可以是：
  *   - "username:password@hostname:port" （带认证）
  *   - "hostname:port" （不需认证）
  *   - "username:password@[ipv6]:port" （IPv6 地址需要用方括号括起来）
  */
 function socks5AddressParser(address) {
-	// 使用 "@" 分割地址，分为认证部分和服务器地址部分
-	// reverse() 是为了处理没有认证信息的情况，确保 latter 总是包含服务器地址
 	let [latter, former] = address.split("@").reverse();
 	let username, password, hostname, port;
-
-	// 如果存在 former 部分，说明提供了认证信息
 	if (former) {
 		const formers = former.split(":");
 		if (formers.length !== 2) {
@@ -873,39 +802,25 @@ function socks5AddressParser(address) {
 		}
 		[username, password] = formers;
 	}
-
-	// 解析服务器地址部分
 	const latters = latter.split(":");
-	// 从末尾提取端口号（因为 IPv6 地址中也包含冒号）
 	port = Number(latters.pop());
 	if (isNaN(port)) {
 		throw new Error('无效的 SOCKS 地址格式：端口号必须是数字');
 	}
-
-	// 剩余部分就是主机名（可能是域名、IPv4 或 IPv6 地址）
 	hostname = latters.join(":");
-
-	// 处理 IPv6 地址的特殊情况
-	// IPv6 地址包含多个冒号，所以必须用方括号括起来，如 [2001:db8::1]
 	const regex = /^\[.*\]$/;
 	if (hostname.includes(":") && !regex.test(hostname)) {
 		throw new Error('无效的 SOCKS 地址格式：IPv6 地址必须用方括号括起来，如 [2001:db8::1]');
 	}
-
-	//if (/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(hostname)) hostname = `${atob('d3d3Lg==')}${hostname}${atob('LmlwLjA5MDIyNy54eXo=')}`;
-	// 返回解析后的结果
 	return {
-		username,  // 用户名，如果没有则为 undefined
-		password,  // 密码，如果没有则为 undefined
-		hostname,  // 主机名，可以是域名、IPv4 或 IPv6 地址
-		port,     // 端口号，已转换为数字类型
+		username,
+		password,
+		hostname,
+		port,
 	}
 }
 
 /**
- * 恢复被伪装的信息
- * 这个函数用于将内容中的假用户ID和假主机名替换回真实的值
- * 
  * @param {string} content 需要处理的内容
  * @param {string} userID 真实的用户ID
  * @param {string} hostName 真实的主机名
@@ -913,15 +828,10 @@ function socks5AddressParser(address) {
  * @returns {string} 恢复真实信息后的内容
  */
 function revertFakeInfo(content, userID, hostName, isBase64) {
-	if (isBase64) content = atob(content);  // 如果内容是Base64编码的，先解码
-	
-	// 使用正则表达式全局替换（'g'标志）
-	// 将所有出现的假用户ID和假主机名替换为真实的值
+	if (isBase64) content = atob(content);
 	content = content.replace(new RegExp(fakeUserID, 'g'), userID)
-	               .replace(new RegExp(fakeHostName, 'g'), hostName);
-	
-	if (isBase64) content = btoa(content);  // 如果原内容是Base64编码的，处理完后再次编码
-	
+	               .replace(new RegExp(fakeHostName, 'g'), hostName);	
+	if (isBase64) content = btoa(content);
 	return content;
 }
 
@@ -935,18 +845,13 @@ function revertFakeInfo(content, userID, hostName, isBase64) {
  */
 async function MD5MD5(text) {
 	const encoder = new TextEncoder();
-  
-	// 第一次MD5哈希
 	const firstPass = await crypto.subtle.digest('MD5', encoder.encode(text));
 	const firstPassArray = Array.from(new Uint8Array(firstPass));
 	const firstHex = firstPassArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-	// 第二次MD5哈希，使用第一次哈希结果的中间部分（索引7到26）
 	const secondPass = await crypto.subtle.digest('MD5', encoder.encode(firstHex.slice(7, 27)));
 	const secondPassArray = Array.from(new Uint8Array(secondPass));
-	const secondHex = secondPassArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  
-	return secondHex.toLowerCase();  // 返回小写的十六进制字符串
+	const secondHex = secondPassArray.map(b => b.toString(16).padStart(2, '0')).join('');  
+	return secondHex.toLowerCase();
 }
 
 /**
@@ -958,15 +863,10 @@ async function MD5MD5(text) {
  * @returns {Promise<string[]>} 清理和分割后的地址数组
  */
 async function ADD(envadd) {
-	// 将制表符、双引号、单引号和换行符都替换为逗号
-	// 然后将连续的多个逗号替换为单个逗号
 	var addtext = envadd.replace(/[	|"'\r\n]+/g, ',').replace(/,+/g, ',');
-	
-	// 删除开头和结尾的逗号（如果有的话）
 	if (addtext.charAt(0) == ',') addtext = addtext.slice(1);
 	if (addtext.charAt(addtext.length - 1) == ',') addtext = addtext.slice(0, addtext.length - 1);
 	
-	// 使用逗号分割字符串，得到地址数组
 	const add = addtext.split(',');
 	
 	return add;
@@ -1033,26 +933,20 @@ async function getVLESSConfig(userID, hostName, sub, UA, RproxyIP, _url) {
 	if(hostName.includes(".workers.dev") || hostName.includes(".pages.dev")){
 		if ( proxyhostsURL && (!proxyhosts || proxyhosts.length == 0)) {
 			try {
-				const response = await fetch(proxyhostsURL); 
-			
+				const response = await fetch(proxyhostsURL); 		
 				if (!response.ok) {
 					console.error('获取地址时出错:', response.status, response.statusText);
-					return; // 如果有错误，直接返回
-				}
-			
+					return;
+				}		
 				const text = await response.text();
 				const lines = text.split('\n');
-				// 过滤掉空行或只包含空白字符的行
-				const nonEmptyLines = lines.filter(line => line.trim() !== '');
-			
+				const nonEmptyLines = lines.filter(line => line.trim() !== '');			
 				proxyhosts = proxyhosts.concat(nonEmptyLines);
 			} catch (error) {
-				//console.error('获取地址时出错:', error);
 			}
 		} 
 		if (proxyhosts.length != 0) proxyhost = proxyhosts[Math.floor(Math.random() * proxyhosts.length)] + "/";
 	}
-
 	if ( userAgent.includes('mozilla') && !subParams.some(_searchParams => _url.searchParams.has(_searchParams))) {
 		let 订阅器 = `您的订阅内容由 ${sub} 提供维护支持, 自动获取ProxyIP: ${RproxyIP}`;
 		if (!sub || sub == '') {
@@ -1077,9 +971,6 @@ Base64订阅地址:
 https://${proxyhost}${hostName}/${userID}?b64
 https://${proxyhost}${hostName}/${userID}?base64
 
-clash订阅地址:
-https://${proxyhost}${hostName}/${userID}?clash
-
 singbox订阅地址:
 https://${proxyhost}${hostName}/${userID}?sb
 https://${proxyhost}${hostName}/${userID}?singbox
@@ -1088,32 +979,16 @@ https://${proxyhost}${hostName}/${userID}?singbox
 v2ray
 ---------------------------------------------------------------
 ${v2ray}
----------------------------------------------------------------
-################################################################
-clash-meta
----------------------------------------------------------------
-${clash}
----------------------------------------------------------------
-################################################################
-telegram 交流群 技术大佬~在线发牌!
-https://t.me/CMLiussss
----------------------------------------------------------------
-github 项目地址 Star!Star!Star!!!
-https://github.com/cmliu/edgetunnel
----------------------------------------------------------------
 ################################################################
 `;
 	} else {
 		if (typeof fetch != 'function') {
 			return 'Error: fetch is not available in this environment.';
 		}
-
 		let newAddressesapi = [];
 		let newAddressescsv = [];
 		let newAddressesnotlsapi = [];
 		let newAddressesnotlscsv = [];
-
-		// 如果是使用默认域名，则改成一个workers的域名，订阅器会加上代理
 		if (hostName.includes(".workers.dev")){
 			noTLS = 'true';
 			fakeHostName = `${fakeHostName}.workers.dev`;
@@ -1132,21 +1007,17 @@ https://github.com/cmliu/edgetunnel
 		console.log(`虚假HOST: ${fakeHostName}`);
 		let url = `${subProtocol}://${sub}/sub?host=${fakeHostName}&uuid=${fakeUserID}&edgetunnel=cmliu&proxyip=${RproxyIP}`;
 		let isBase64 = true;
-
 		if (!sub || sub == ""){
 			if(hostName.includes('workers.dev') || hostName.includes('pages.dev')) {
 				if (proxyhostsURL && (!proxyhosts || proxyhosts.length == 0)) {
 					try {
-						const response = await fetch(proxyhostsURL); 
-					
+						const response = await fetch(proxyhostsURL); 			
 						if (!response.ok) {
 							console.error('获取地址时出错:', response.status, response.statusText);
 							return; // 如果有错误，直接返回
-						}
-					
+						}			
 						const text = await response.text();
 						const lines = text.split('\n');
-						// 过滤掉空行或只包含空白字符的行
 						const nonEmptyLines = lines.filter(line => line.trim() !== '');
 					
 						proxyhosts = proxyhosts.concat(nonEmptyLines);
@@ -1154,17 +1025,14 @@ https://github.com/cmliu/edgetunnel
 						console.error('获取地址时出错:', error);
 					}
 				}
-				// 使用Set对象去重
 				proxyhosts = [...new Set(proxyhosts)];
 			}
-	
 			newAddressesapi = await getAddressesapi(addressesapi);
 			newAddressescsv = await getAddressescsv('TRUE');
 			url = `https://${hostName}/${fakeUserID}`;
 			if (hostName.includes("worker") || hostName.includes("notls") || noTLS == 'true') url += '?notls';
 			console.log(`虚假订阅: ${url}`);
 		} 
-
 		if (!userAgent.includes(('CF-Workers-SUB').toLowerCase())){
 			if ((userAgent.includes('clash') && !userAgent.includes('nekobox')) || ( _url.searchParams.has('clash') && !userAgent.includes('subconverter'))) {
 				url = `${subProtocol}://${subconverter}/sub?target=clash&url=${encodeURIComponent(url)}&insert=false&config=${encodeURIComponent(subconfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
@@ -1173,8 +1041,7 @@ https://github.com/cmliu/edgetunnel
 				url = `${subProtocol}://${subconverter}/sub?target=singbox&url=${encodeURIComponent(url)}&insert=false&config=${encodeURIComponent(subconfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
 				isBase64 = false;
 			}
-		}
-		
+		}		
 		try {
 			let content;
 			if ((!sub || sub == "") && isBase64 == true) {
@@ -1186,11 +1053,8 @@ https://github.com/cmliu/edgetunnel
 					}});
 				content = await response.text();
 			}
-
 			if (_url.pathname == `/${fakeUserID}`) return content;
-
 			return revertFakeInfo(content, userID, hostName, isBase64);
-
 		} catch (error) {
 			console.error('Error fetching content:', error);
 			return `Error fetching content: ${error.message}`;
@@ -1208,7 +1072,7 @@ async function getAccountId(email, key) {
 		});
 		const response = await fetch(url, { headers });
 		const data = await response.json();
-		return data.result[0].id; // 假设我们需要第一个账号ID
+		return data.result[0].id;
 	} catch (error) {
 		return false ;
 	}
@@ -1218,7 +1082,6 @@ async function getSum(accountId, accountIndex, email, key, startDate, endDate) {
 	try {
 		const startDateISO = new Date(startDate).toISOString();
 		const endDateISO = new Date(endDate).toISOString();
-	
 		const query = JSON.stringify({
 			query: `query getBillingMetrics($accountId: String!, $filter: AccountWorkersInvocationsAdaptiveFilter_InputObject) {
 				viewer {
@@ -1240,38 +1103,28 @@ async function getSum(accountId, accountIndex, email, key, startDate, endDate) {
 				accountId,
 				filter: { datetime_geq: startDateISO, datetime_leq: endDateISO }
 			},
-		});
-	
+		});	
 		const headers = new Headers({
 			'Content-Type': 'application/json',
 			'X-AUTH-EMAIL': email,
 			'X-AUTH-KEY': key,
 		});
-	
 		const response = await fetch(`https://api.cloudflare.com/client/v4/graphql`, {
 			method: 'POST',
 			headers: headers,
 			body: query
-		});
-	
+		});	
 		if (!response.ok) {
 			throw new Error(`HTTP error! status: ${response.status}`);
-		}
-	
-		const res = await response.json();
-	
+		}	
+		const res = await response.json();	
 		const pagesFunctionsInvocationsAdaptiveGroups = res?.data?.viewer?.accounts?.[accountIndex]?.pagesFunctionsInvocationsAdaptiveGroups;
 		const workersInvocationsAdaptive = res?.data?.viewer?.accounts?.[accountIndex]?.workersInvocationsAdaptive;
-	
 		if (!pagesFunctionsInvocationsAdaptiveGroups && !workersInvocationsAdaptive) {
 			throw new Error('找不到数据');
-		}
-	
+		}	
 		const pagesSum = pagesFunctionsInvocationsAdaptiveGroups.reduce((a, b) => a + b?.sum.requests, 0);
-		const workersSum = workersInvocationsAdaptive.reduce((a, b) => a + b?.sum.requests, 0);
-	
-		//console.log(`范围: ${startDateISO} ~ ${endDateISO}\n默认取第 ${accountIndex} 项`);
-	
+		const workersSum = workersInvocationsAdaptive.reduce((a, b) => a + b?.sum.requests, 0);	
 		return [pagesSum, workersSum ];
 	} catch (error) {
 		return [ 0,0 ];
@@ -1282,33 +1135,23 @@ async function getAddressesapi(api) {
 	if (!api || api.length === 0) {
 		return [];
 	}
-
 	let newapi = "";
-
-	// 创建一个AbortController对象，用于控制fetch请求的取消
 	const controller = new AbortController();
-
 	const timeout = setTimeout(() => {
-		controller.abort(); // 取消所有请求
-	}, 2000); // 2秒后触发
+		controller.abort();
+	}, 2000);
 
 	try {
-		// 使用Promise.allSettled等待所有API请求完成，无论成功或失败
-		// 对api数组进行遍历，对每个API地址发起fetch请求
 		const responses = await Promise.allSettled(api.map(apiUrl => fetch(apiUrl, {
 			method: 'get', 
 			headers: {
 				'Accept': 'text/html,application/xhtml+xml,application/xml;',
 				'User-Agent': 'CF-Workers-edgetunnel/cmliu'
 			},
-			signal: controller.signal // 将AbortController的信号量添加到fetch请求中，以便于需要时可以取消请求
+			signal: controller.signal
 		}).then(response => response.ok ? response.text() : Promise.reject())));
-
-		// 遍历所有响应
 		for (const response of responses) {
-			// 检查响应状态是否为'fulfilled'，即请求成功完成
 			if (response.status === 'fulfilled') {
-				// 获取响应的内容
 				const content = await response.value;
 				newapi += content + '\n';
 			}
@@ -1316,64 +1159,47 @@ async function getAddressesapi(api) {
 	} catch (error) {
 		console.error(error);
 	} finally {
-		// 无论成功或失败，最后都清除设置的超时定时器
 		clearTimeout(timeout);
 	}
-
 	const newAddressesapi = await ADD(newapi);
-
-	// 返回处理后的结果
 	return newAddressesapi;
 }
 
 async function getAddressescsv(tls) {
 	if (!addressescsv || addressescsv.length === 0) {
 		return [];
-	}
-	
-	let newAddressescsv = [];
-	
+	}	
+	let newAddressescsv = [];	
 	for (const csvUrl of addressescsv) {
 		try {
-			const response = await fetch(csvUrl);
-		
+			const response = await fetch(csvUrl);	
 			if (!response.ok) {
 				console.error('获取CSV地址时出错:', response.status, response.statusText);
 				continue;
-			}
-		
-			const text = await response.text();// 使用正确的字符编码解析文本内容
+			}	
+			const text = await response.text();
 			let lines;
 			if (text.includes('\r\n')){
 				lines = text.split('\r\n');
 			} else {
 				lines = text.split('\n');
-			}
-		
-			// 检查CSV头部是否包含必需字段
+			}		
 			const header = lines[0].split(',');
 			const tlsIndex = header.indexOf('TLS');
-			const speedIndex = header.length - 1; // 最后一个字段
-		
-			const ipAddressIndex = 0;// IP地址在 CSV 头部的位置
-			const portIndex = 1;// 端口在 CSV 头部的位置
-			const dataCenterIndex = tlsIndex + 1; // 数据中心是 TLS 的后一个字段
-		
+			const speedIndex = header.length - 1;	
+			const ipAddressIndex = 0;
+			const portIndex = 1;
+			const dataCenterIndex = tlsIndex + 1;	
 			if (tlsIndex === -1) {
 				console.error('CSV文件缺少必需的字段');
 				continue;
-			}
-		
-			// 从第二行开始遍历CSV行
+			}		
 			for (let i = 1; i < lines.length; i++) {
 				const columns = lines[i].split(',');
-		
-				// 检查TLS是否为"TRUE"且速度大于DLS
 				if (columns[tlsIndex].toUpperCase() === tls && parseFloat(columns[speedIndex]) > DLS) {
 					const ipAddress = columns[ipAddressIndex];
 					const port = columns[portIndex];
-					const dataCenter = columns[dataCenterIndex];
-			
+					const dataCenter = columns[dataCenterIndex];		
 					const formattedAddress = `${ipAddress}:${port}#${dataCenter}`;
 					newAddressescsv.push(formattedAddress);
 				}
@@ -1382,8 +1208,7 @@ async function getAddressescsv(tls) {
 			console.error('获取CSV地址时出错:', error);
 			continue;
 		}
-	}
-	
+	}	
 	return newAddressescsv;
 }
 
@@ -1396,11 +1221,9 @@ function subAddresses(host,UUID,noTLS,newAddressesapi,newAddressescsv,newAddress
 		addressesnotls = addressesnotls.concat(newAddressesnotlsapi);
 		addressesnotls = addressesnotls.concat(newAddressesnotlscsv);
 		const uniqueAddressesnotls = [...new Set(addressesnotls)];
-
 		notlsresponseBody = uniqueAddressesnotls.map(address => {
 			let port = "80";
-			let addressid = address;
-		
+			let addressid = address;	
 			const match = addressid.match(regex);
 			if (!match) {
 				if (address.includes(':') && address.includes('#')) {
@@ -1417,8 +1240,7 @@ function subAddresses(host,UUID,noTLS,newAddressesapi,newAddressescsv,newAddress
 					const parts = address.split('#');
 					address = parts[0];
 					addressid = parts[1];
-				}
-			
+				}		
 				if (addressid.includes(':')) {
 					addressid = addressid.split(':')[0];
 				}
@@ -1427,7 +1249,6 @@ function subAddresses(host,UUID,noTLS,newAddressesapi,newAddressescsv,newAddress
 				port = match[2] || port;
 				addressid = match[3] || address;
 			}
-
 			const httpPorts = ["8080","8880","2052","2082","2086","2095"];
 			if (!isValidIPv4(address) && port == "80") {
 				for (let httpPort of httpPorts) {
@@ -1436,28 +1257,19 @@ function subAddresses(host,UUID,noTLS,newAddressesapi,newAddressescsv,newAddress
 						break;
 					}
 				}
-			}
-			
+			}			
 			let 伪装域名 = host ;
 			let 最终路径 = '/?ed=2560' ;
 			let 节点备注 = '';
-			const 协议类型 = atob(啥啥啥_写的这是啥啊);
-			
+			const 协议类型 = atob(啥啥啥_写的这是啥啊);			
 			const vlessLink = `${协议类型}://${UUID}@${address}:${port}?encryption=none&security=&type=ws&host=${伪装域名}&path=${encodeURIComponent(最终路径)}#${encodeURIComponent(addressid + 节点备注)}`;
-	
 			return vlessLink;
-
 		}).join('\n');
-
 	}
-
-	// 使用Set对象去重
 	const uniqueAddresses = [...new Set(addresses)];
-
 	const responseBody = uniqueAddresses.map(address => {
 		let port = "443";
 		let addressid = address;
-
 		const match = addressid.match(regex);
 		if (!match) {
 			if (address.includes(':') && address.includes('#')) {
@@ -1474,8 +1286,7 @@ function subAddresses(host,UUID,noTLS,newAddressesapi,newAddressescsv,newAddress
 				const parts = address.split('#');
 				address = parts[0];
 				addressid = parts[1];
-			}
-		
+			}	
 			if (addressid.includes(':')) {
 				addressid = addressid.split(':')[0];
 			}
@@ -1484,7 +1295,6 @@ function subAddresses(host,UUID,noTLS,newAddressesapi,newAddressescsv,newAddress
 			port = match[2] || port;
 			addressid = match[3] || address;
 		}
-
 		const httpsPorts = ["2053","2083","2087","2096","8443"];
 		if (!isValidIPv4(address) && port == "443") {
 			for (let httpsPort of httpsPorts) {
@@ -1493,25 +1303,20 @@ function subAddresses(host,UUID,noTLS,newAddressesapi,newAddressescsv,newAddress
 					break;
 				}
 			}
-		}
-		
+		}	
 		let 伪装域名 = host ;
 		let 最终路径 = '/?ed=2560' ;
-		let 节点备注 = '';
-		
+		let 节点备注 = '';		
 		if(proxyhosts.length > 0 && (伪装域名.includes('.workers.dev') || 伪装域名.includes('pages.dev'))) {
 			最终路径 = `/${伪装域名}${最终路径}`;
 			伪装域名 = proxyhosts[Math.floor(Math.random() * proxyhosts.length)];
 			节点备注 = ` 已启用临时域名中转服务，请尽快绑定自定义域！`;
-		}
-		
+		}		
 		const 协议类型 = atob(啥啥啥_写的这是啥啊);
-		const vlessLink = `${协议类型}://${UUID}@${address}:${port}?encryption=none&security=tls&sni=${伪装域名}&fp=random&type=ws&host=${伪装域名}&path=${encodeURIComponent(最终路径)}#${encodeURIComponent(addressid + 节点备注)}`;
-			
+		const vlessLink = `${协议类型}://${UUID}@${address}:${port}?encryption=none&security=tls&sni=${伪装域名}&fp=random&type=ws&host=${伪装域名}&path=${encodeURIComponent(最终路径)}#${encodeURIComponent(addressid + 节点备注)}`;			
 		return vlessLink;
 	}).join('\n');
-
-	let base64Response = responseBody; // 重新进行 Base64 编码
+	let base64Response = responseBody;
 	if(noTLS == 'true') base64Response += `\n${notlsresponseBody}`;
 	return btoa(base64Response);
 }
@@ -1525,8 +1330,7 @@ async function sendMessage(type, ip, add_data = "") {
 			msg = `${type}\nIP: ${ip}\n国家: ${ipInfo.country}\n<tg-spoiler>城市: ${ipInfo.city}\n组织: ${ipInfo.org}\nASN: ${ipInfo.as}\n${add_data}`;
 		} else {
 			msg = `${type}\nIP: ${ip}\n<tg-spoiler>${add_data}`;
-		}
-	
+		}	
 		let url = "https://api.telegram.org/bot"+ BotToken +"/sendMessage?chat_id=" + ChatID + "&parse_mode=HTML&text=" + encodeURIComponent(msg);
 		return fetch(url, {
 			method: 'get',
