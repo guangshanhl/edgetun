@@ -43,8 +43,7 @@ export default {
 				return await vlessOverWSHandler(request);
 			}
 		} catch (err) {
-			/** @type {Error} */ let e = err;
-			return new Response(e.toString());
+			return new Response(err.toString());
 		}
 	},
 };
@@ -117,14 +116,10 @@ async function vlessOverWSHandler(request) {
 			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log);
 		},
 		close() {
-			log(`readableWebSocketStream is close`);
 		},
 		abort(reason) {
-			log(`readableWebSocketStream is abort`, JSON.stringify(reason));
 		},
-	})).catch((err) => {
-		log('readableWebSocketStream pipeTo error', err);
-	});
+	})).catch((err) => {});
 	return new Response(null, {
 		status: 101,
 		// @ts-ignore
@@ -133,8 +128,6 @@ async function vlessOverWSHandler(request) {
 }
 
 /**
- * Handles outbound TCP connections.
- *
  * @param {any} remoteSocket 
  * @param {string} addressRemote The remote address to connect to.
  * @param {number} portRemote The remote port to connect to.
@@ -167,13 +160,11 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 		})
 		remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null, log);
 	}
-
 	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
 	remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry, log);
 }
 
 /**
- * 
  * @param {import("@cloudflare/workers-types").WebSocket} webSocketServer
  * @param {string} earlyDataHeader for ws 0rtt
  * @param {(info: string)=> void} log for ws 0rtt
@@ -224,7 +215,6 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 }
 
 /**
- * 
  * @param { ArrayBuffer} vlessBuffer 
  * @param {string} userID 
  * @returns 
@@ -326,7 +316,6 @@ function processVlessHeader(
 }
 
 /**
- * 
  * @param {import("@cloudflare/workers-types").Socket} remoteSocket 
  * @param {import("@cloudflare/workers-types").WebSocket} webSocket 
  * @param {ArrayBuffer} vlessResponseHeader 
@@ -378,7 +367,6 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 			safeCloseWebSocket(webSocket);
 		});
 	if (hasIncomingData === false && retry) {
-		log(`retry`)
 		retry();
 	}
 }
@@ -402,7 +390,6 @@ function base64ToArrayBuffer(base64Str) {
 }
 
 /**
- * This is not real UUID validation
  * @param {string} uuid 
  */
 function isValidUUID(uuid) {
@@ -413,7 +400,6 @@ function isValidUUID(uuid) {
 const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
 /**
- * Normally, WebSocket will not has exceptions when close.
  * @param {import("@cloudflare/workers-types").WebSocket} socket
  */
 function safeCloseWebSocket(socket) {
@@ -466,7 +452,6 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader, log) {
 		flush(controller) {
 		}
 	});
-
 	transformStream.readable.pipeTo(new WritableStream({
 		async write(chunk) {
 			const resp = await fetch('https://1.1.1.1/dns-query',
@@ -481,7 +466,6 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader, log) {
 			const udpSize = dnsQueryResult.byteLength;
 			const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
 			if (webSocket.readyState === WS_READY_STATE_OPEN) {
-				log(`doh success and dns message length is ${udpSize}`);
 				if (isVlessHeaderSent) {
 					webSocket.send(await new Blob([udpSizeBuffer, dnsQueryResult]).arrayBuffer());
 				} else {
@@ -490,9 +474,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader, log) {
 				}
 			}
 		}
-	})).catch((error) => {
-		log('dns udp has error' + error)
-	});
+	})).catch((error) => {});
 	const writer = transformStream.writable.getWriter();
 	return {
 		/**
