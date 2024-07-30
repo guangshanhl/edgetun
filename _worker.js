@@ -12,15 +12,12 @@ export default {
 		try {
 			userID = env.UUID || userID;
 			proxyIP = env.PROXYIP || proxyIP;
-
 			const upgradeHeader = request.headers.get('Upgrade');
-
 			if (!upgradeHeader || upgradeHeader !== 'websocket') {
 				const url = new URL(request.url);
 				switch (url.pathname) {
 					case '/':
 						return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
-
 					case `/${userID}`:
 						const vlessConfig = getVLESSConfig(userID, request.headers.get('Host'));
 						return new Response(`${vlessConfig}`, {
@@ -29,7 +26,6 @@ export default {
 								"Content-Type": "text/plain;charset=utf-8",
 							}
 						});
-
 					default:
 						url.hostname = 'www.bing.com';
 						url.protocol = 'https:';
@@ -52,9 +48,7 @@ async function vlessOverWSHandler(request) {
 	let address = '';
 	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
-	let remoteSocketWapper = {
-		value: null,
-	};
+	let remoteSocketWapper = { value: null };
 	let udpStreamWrite = null;
 	let isDns = false;
 	readableWebSocketStream.pipeTo(new WritableStream({
@@ -77,13 +71,10 @@ async function vlessOverWSHandler(request) {
 				vlessVersion = new Uint8Array([0, 0]),
 				isUDP,
 			} = processVlessHeader(chunk, userID);
-
 			address = addressRemote;
-
 			if (hasError) {
 				throw new Error(message);
 			}
-
 			if (isUDP) {
 				if (portRemote === 53) {
 					isDns = true;
@@ -109,10 +100,7 @@ async function vlessOverWSHandler(request) {
 
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
 	async function connectAndWrite(address, port) {
-		const tcpSocket = connect({
-			hostname: address,
-			port: port,
-		});
+		const tcpSocket = connect({ hostname: address, port: port });
 		remoteSocket.value = tcpSocket;
 		const writer = tcpSocket.writable.getWriter();
 		await writer.write(rawClientData);
@@ -121,9 +109,7 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 	}
 	async function retry() {
 		const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
-		tcpSocket.closed.catch(error => {}).finally(() => {
-			safeCloseWebSocket(webSocket);
-		});
+		tcpSocket.closed.catch(error => {}).finally(() => { safeCloseWebSocket(webSocket); });
 		remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
 	}
 	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
@@ -148,9 +134,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
 				}
 				controller.close();
 			});
-			webSocketServer.addEventListener('error', (err) => {
-				controller.error(err);
-			});
+			webSocketServer.addEventListener('error', (err) => { controller.error(err); });
 			const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
 			if (error) {
 				controller.error(error);
@@ -226,14 +210,10 @@ function processVlessHeader(vlessBuffer, userID) {
 			addressValue = ipv6.join(':');
 			break;
 		default:
-			return {
-				hasError: true,
-			};
+			return { hasError: true };
 	}
 	if (!addressValue) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	return {
 		hasError: false,
