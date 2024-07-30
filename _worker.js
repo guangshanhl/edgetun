@@ -8,30 +8,38 @@ if (!isValidUUID(userID)) {
 }
 
 export default {
-    async fetch(request, env, ctx) {
-        try {
-            userID = env.UUID || userID;
-            proxyIP = env.PROXYIP || proxyIP;
-            const upgradeHeader = request.headers.get('Upgrade');
-            if (upgradeHeader === 'websocket') {
-                return await vlessOverWSHandler(request);
-            }
-            const url = new URL(request.url);
-            switch (url.pathname) {
-                case '/':
-                    return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
-                case `/${userID}`:
-                    const vlessConfig = getVLESSConfig(userID, request.headers.get('Host'));
-                    return new Response(vlessConfig, { status: 200, headers: { "Content-Type": "text/plain;charset=utf-8" } });
-                default:
-                    url.hostname = 'www.bing.com';
-                    url.protocol = 'https:';
-                    return await fetch(new Request(url, request));
-            }
-        } catch (err) {
-            return new Response(err.toString());
-        }
-    },
+	async fetch(request, env, ctx) {
+		try {
+			userID = env.UUID || userID;
+			proxyIP = env.PROXYIP || proxyIP;
+			const upgradeHeader = request.headers.get('Upgrade');
+			if (!upgradeHeader || upgradeHeader !== 'websocket') {
+				const url = new URL(request.url);
+				switch (url.pathname) {
+					case '/':
+						return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
+					case `/${userID}`: {
+						const vlessConfig = getVLESSConfig(userID, request.headers.get('Host'));
+						return new Response(`${vlessConfig}`, {
+							status: 200,
+							headers: {
+								"Content-Type": "text/plain;charset=utf-8",
+							}
+						});
+					}
+					default:
+						url.hostname = 'www.bing.com';
+						url.protocol = 'https:';
+						request = new Request(url, request);
+						return await fetch(request);
+				}
+			} else {
+				return await vlessOverWSHandler(request);
+			}
+		} catch (err) {
+			return new Response(err.toString());
+		}
+	},
 };
 
 async function vlessOverWSHandler(request) {
