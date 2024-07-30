@@ -376,11 +376,12 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
 	return { write: chunk => writer.write(chunk) };
 }
 function getVLESSConfig(userID, hostName) {
-    return `
+	const vlessMain = `vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}`
+	return `
 ################################################################
 v2ray
 ---------------------------------------------------------------
-vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}
+${vlessMain}
 ---------------------------------------------------------------
 ################################################################
 `;
