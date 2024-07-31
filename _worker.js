@@ -201,22 +201,17 @@ function isValidUUID(uuid) {
 const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
 function safeCloseWebSocket(socket) {
-	try {
-		if (socket.readyState === WS_READY_STATE_OPEN || socket.readyState === WS_READY_STATE_CLOSING) {
-			socket.close();
-		}
-	} catch (error) {
-	}
+    try {
+        if ([WS_READY_STATE_OPEN, WS_READY_STATE_CLOSING].includes(socket.readyState)) {
+            socket.close();
+        }
+    } catch {
+    }
 }
 
-const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
-function unsafeStringify(arr, offset = 0) {
-    return Array.from({ length: 16 }, (_, i) => byteToHex[arr[offset + i]]).join('').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5').toLowerCase();
-}
-
-function stringify(arr, offset = 0) {
-    const uuid = unsafeStringify(arr, offset);
-    return uuid;
+function stringify(arr) {
+    const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
+    return Array.from({ length: 16 }, (_, i) => byteToHex[arr[i]]).join('').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5').toLowerCase();
 }
 
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
