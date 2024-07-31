@@ -108,7 +108,6 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
     let readableStreamCancel = false;
-
     return new ReadableStream({
         start(controller) {
             webSocketServer.addEventListener('message', (event) => {
@@ -116,7 +115,6 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
             });
             webSocketServer.addEventListener('close', () => controller.close());
             webSocketServer.addEventListener('error', (err) => controller.error(err));
-
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
             if (error) {
                 controller.error(error);
@@ -132,79 +130,39 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
 }
 
 function processVlessHeader(vlessBuffer, userID) {
-	if (vlessBuffer.byteLength < 24) return { hasError: true };
-	const version = new Uint8Array(vlessBuffer.slice(0, 1));
-	let isValidUser = false;
-	let isUDP = false;
-	if (stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID) {
-		isValidUser = true;
-	}
-	if (!isValidUser) {
-		return { hasError: true };
-	}
-	const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
-	const command = new Uint8Array(
-		vlessBuffer.slice(18 + optLength, 18 + optLength + 1)
-	)[0];
-	if (command === 1) {
-	} else if (command === 2) {
-		isUDP = true;
-	} else {
-		return { hasError: true };
-	}
-	const portIndex = 18 + optLength + 1;
-	const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
-	const portRemote = new DataView(portBuffer).getUint16(0);
-	let addressIndex = portIndex + 2;
-	const addressBuffer = new Uint8Array(
-		vlessBuffer.slice(addressIndex, addressIndex + 1)
-	);
-	const addressType = addressBuffer[0];
-	let addressLength = 0;
-	let addressValueIndex = addressIndex + 1;
-	let addressValue = '';
-	switch (addressType) {
-		case 1:
-			addressLength = 4;
-			addressValue = new Uint8Array(
-				vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			).join('.');
-			break;
-		case 2:
-			addressLength = new Uint8Array(
-				vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)
-			)[0];
-			addressValueIndex += 1;
-			addressValue = new TextDecoder().decode(
-				vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			);
-			break;
-		case 3:
-			addressLength = 16;
-			const dataView = new DataView(
-				vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			);
-			const ipv6 = [];
-			for (let i = 0; i < 8; i++) {
-				ipv6.push(dataView.getUint16(i * 2).toString(16));
-			}
-			addressValue = ipv6.join(':');
-			break;
-		default:
-			return { hasError: true };
-	}
-	if (!addressValue) {
-		return { hasError: true };
-	}
-	return {
-		hasError: false,
-		addressRemote: addressValue,
-		addressType,
-		portRemote,
-		rawDataIndex: addressValueIndex + addressLength,
-		vlessVersion: version,
-		isUDP,
-	};
+    if (vlessBuffer.byteLength < 24) return { hasError: true };
+    const version = new Uint8Array(vlessBuffer.slice(0, 1));
+    const isValidUser = stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID;
+    if (!isValidUser) return { hasError: true };
+    const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
+    const command = new Uint8Array(vlessBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
+    let isUDP = command === 2;
+    if (![1, 2].includes(command)) return { hasError: true };
+    const portIndex = 18 + optLength + 1;
+    const portRemote = new DataView(vlessBuffer.slice(portIndex, portIndex + 2)).getUint16(0);
+    let addressIndex = portIndex + 2;
+    const addressType = new Uint8Array(vlessBuffer.slice(addressIndex, addressIndex + 1))[0];
+    let addressLength = 0, addressValueIndex = addressIndex + 1, addressValue = '';
+    switch (addressType) {
+        case 1:
+            addressLength = 4;
+            addressValue = new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join('.');
+            break;
+        case 2:
+            addressLength = new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1))[0];
+            addressValueIndex += 1;
+            addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+            break;
+        case 3:
+            addressLength = 16;
+            const ipv6 = Array.from({ length: 8 }, (_, i) => new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).getUint16(i * 2).toString(16));
+            addressValue = ipv6.join(':');
+            break;
+        default:
+            return { hasError: true };
+    }
+    if (!addressValue) return { hasError: true };
+    return { hasError: false, addressRemote: addressValue, portRemote, rawDataIndex: addressValueIndex + addressLength, vlessVersion: version, isUDP };
 }
 
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
