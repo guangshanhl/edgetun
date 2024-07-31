@@ -1,9 +1,6 @@
 import { connect } from 'cloudflare:sockets';
 let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
 let proxyIP = '';
-if (!isValidUUID(userID)) {
-	throw new Error('uuid is not valid');
-}
 export default {
 	async fetch(request, env, ctx) {
 		try {
@@ -315,9 +312,6 @@ function unsafeStringify(arr, offset = 0) {
 }
 function stringify(arr, offset = 0) {
     const uuid = unsafeStringify(arr, offset);
-    if (!isValidUUID(uuid)) {
-        throw new Error("Invalid UUID provided");
-    }
     return uuid;
 }
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
