@@ -1,8 +1,6 @@
 import { connect } from 'cloudflare:sockets';
-
 let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
 let proxyIP = '';
-
 export default {
     async fetch(request, env) {
         try {
@@ -24,7 +22,6 @@ export default {
         }
     },
 };
-
 async function vlessOverWSHandler(request) {
 	const webSocketPair = new WebSocketPair();
 	const [client, webSocket] = Object.values(webSocketPair);
@@ -65,7 +62,6 @@ async function vlessOverWSHandler(request) {
 	})).catch((err) => {});
 	return new Response(null, { status: 101, webSocket: client });
 }
-
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
 	async function connectAndWrite(address, port) {
 		const tcpSocket = connect({ hostname: address, port });
@@ -85,7 +81,6 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
 	remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
 }
-
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
     let readableStreamCancel = false;
     return new ReadableStream({
@@ -102,7 +97,6 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
         }
     });
 }
-
 function processVlessHeader(vlessBuffer, userID) {
     if (vlessBuffer.byteLength < 24) return { hasError: true };
     const version = new Uint8Array(vlessBuffer.slice(0, 1));
@@ -126,7 +120,6 @@ function processVlessHeader(vlessBuffer, userID) {
     if (!addressValue) return { hasError: true };
     return { hasError: false, addressRemote: addressValue, portRemote, rawDataIndex: addressValueIndex + addressLength, vlessVersion: version, isUDP };
 }
-
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
     let hasIncomingData = false;
     await remoteSocket.readable.pipeTo(new WritableStream({
@@ -139,7 +132,6 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
     })).catch(() => safeCloseWebSocket(webSocket));
     if (!hasIncomingData && retry) retry();
 }
-
 function base64ToArrayBuffer(base64Str) {
     if (!base64Str) return { error: null };
     try {
@@ -150,10 +142,8 @@ function base64ToArrayBuffer(base64Str) {
         return { error };
     }
 }
-
 const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
-
 function safeCloseWebSocket(socket) {
     try {
         if ([WS_READY_STATE_OPEN, WS_READY_STATE_CLOSING].includes(socket.readyState)) {
@@ -161,12 +151,10 @@ function safeCloseWebSocket(socket) {
         }
     } catch {}
 }
-
 function stringify(arr) {
     const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
     return Array.from({ length: 16 }, (_, i) => byteToHex[arr[i]]).join('').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5').toLowerCase();
 }
-
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     let isVlessHeaderSent = false;
     const transformStream = new TransformStream({
@@ -197,7 +185,6 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     const writer = transformStream.writable.getWriter();
     await writer.write(chunk);
 }
-
 function getVLESSConfig(userID, hostName) {
     return `
 ################################################################
