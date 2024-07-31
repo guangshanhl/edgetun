@@ -159,8 +159,7 @@ function safeCloseWebSocket(socket) {
         if ([WS_READY_STATE_OPEN, WS_READY_STATE_CLOSING].includes(socket.readyState)) {
             socket.close();
         }
-    } catch {
-    }
+    } catch {}
 }
 
 function stringify(arr) {
