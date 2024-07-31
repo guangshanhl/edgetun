@@ -45,64 +45,65 @@ async function vlessOverWSHandler(request) {
 	let address = '';
 	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
-	let remoteSocketWapper = {
-		value: null,
-	};
+	let remoteSocketWrapper = { value: null };
 	let udpStreamWrite = null;
 	let isDns = false;
+	async function handleChunk(chunk) {
+		if (isDns && udpStreamWrite) {
+			await udpStreamWrite(chunk);
+			return;
+		}
+		if (remoteSocketWrapper.value) {
+			const writer = remoteSocketWrapper.value.writable.getWriter();
+			await writer.write(chunk);
+			writer.releaseLock();
+			return;
+		}
+		const {
+			hasError,
+			message,
+			portRemote = 443,
+			addressRemote = '',
+			rawDataIndex,
+			vlessVersion = new Uint8Array([0, 0]),
+			isUDP,
+		} = processVlessHeader(chunk, userID);
+		address = addressRemote;
+		if (hasError) {
+			throw new Error(message);
+		}
+		if (isUDP) {
+			if (portRemote === 53) {
+				isDns = true;
+			} else {
+				throw new Error('UDP proxy only enabled for DNS which is port 53');
+			}
+		}
+		const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
+		const rawClientData = chunk.slice(rawDataIndex);
+		if (isDns) {
+			const { write } = await handleUDPOutBound(webSocket, vlessResponseHeader);
+			udpStreamWrite = write;
+			await udpStreamWrite(rawClientData);
+			return;
+		}
+		handleTCPOutBound(remoteSocketWrapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
+	}
 	readableWebSocketStream.pipeTo(new WritableStream({
-		async write(chunk, controller) {
-			if (isDns && udpStreamWrite) {
-				return udpStreamWrite(chunk);
-			}
-			if (remoteSocketWapper.value) {
-				const writer = remoteSocketWapper.value.writable.getWriter()
-				await writer.write(chunk);
-				writer.releaseLock();
-				return;
-			}
-			const {
-				hasError,
-				message,
-				portRemote = 443,
-				addressRemote = '',
-				rawDataIndex,
-				vlessVersion = new Uint8Array([0, 0]),
-				isUDP,
-			} = processVlessHeader(chunk, userID);
-			address = addressRemote;
-			if (hasError) {
-				throw new Error(message);
-				return;
-			}
-			if (isUDP) {
-				if (portRemote === 53) {
-					isDns = true;
-				} else {
-					throw new Error('UDP proxy only enable for DNS which is port 53');
-					return;
-				}
-			}
-			const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
-			const rawClientData = chunk.slice(rawDataIndex);
-			if (isDns) {
-				const { write } = await handleUDPOutBound(webSocket, vlessResponseHeader);
-				udpStreamWrite = write;
-				udpStreamWrite(rawClientData);
-				return;
-			}
-			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
+		write(chunk, controller) {
+			handleChunk(chunk).catch(error => {
+				controller.error(error);
+			});
 		},
-		close() {
-		},
-		abort(reason) {
-		},
+		close() {},
+		abort(reason) {},
 	})).catch((err) => {});
 	return new Response(null, {
 		status: 101,
 		webSocket: client,
 	});
 }
+
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
 	async function connectAndWrite(address, port) {
 		const tcpSocket = connect({
