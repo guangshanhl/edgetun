@@ -255,9 +255,7 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 				async write(chunk, controller) {
 					hasIncomingData = true;
 					if (webSocket.readyState !== WS_READY_STATE_OPEN) {
-						controller.error(
-							'webSocket.readyState is not open, maybe close'
-						);
+						controller.error('readyState is not open, maybe close');
 					}
 					if (vlessHeader) {
 						webSocket.send(await new Blob([vlessHeader, chunk]).arrayBuffer());
