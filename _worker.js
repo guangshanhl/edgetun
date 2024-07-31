@@ -12,7 +12,7 @@ export default {
 	        switch (url.pathname) {
 			case '/': return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
 		    	case `/${userID}`: return new Response(getVLESSConfig(userID, request.headers.get('Host')), { status: 200, headers: { "Content-Type": "text/plain;charset=utf-8" } });
-			default: return new Response('Not found', { status: 404 });
+			default: url.hostname = 'www.bing.com'; url.protocol = 'https:'; return await fetch(new Request(url, request));
 		}
             } else {
                 return await vlessOverWSHandler(request);
@@ -61,24 +61,18 @@ async function vlessOverWSHandler(request) {
     }));
     return new Response(null, { status: 101, webSocket: client });
 }
-async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
-	async function connectAndWrite(address, port) {
-		const tcpSocket = connect({ hostname: address, port });
-		remoteSocket.value = tcpSocket;
-		const writer = tcpSocket.writable.getWriter();
-		await writer.write(rawClientData);
-		writer.releaseLock();
-		return tcpSocket;
-	}
-	async function retry() {
-		const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote)
-		tcpSocket.closed.catch(error => {}).finally(() => {
-			safeCloseWebSocket(webSocket);
-		})
-		remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
-	}
-	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
-	remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
+async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
+    const tcpSocket = await connectAndWrite(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
+    remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, () => connectAndWrite(remoteSocket, proxyIP || addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader));
+}
+async function connectAndWrite(remoteSocket, address, port, rawClientData, webSocket, vlessResponseHeader) {
+    const tcpSocket = connect({ hostname: address, port });
+    remoteSocket.value = tcpSocket;
+    const writer = tcpSocket.writable.getWriter();
+    await writer.write(rawClientData);
+    writer.releaseLock();
+    remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader);
+    return tcpSocket;
 }
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
     let readableStreamCancel = false;
