@@ -45,65 +45,64 @@ async function vlessOverWSHandler(request) {
 	let address = '';
 	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
-	let remoteSocketWrapper = { value: null };
+	let remoteSocketWapper = {
+		value: null,
+	};
 	let udpStreamWrite = null;
 	let isDns = false;
-	async function handleChunk(chunk) {
-		if (isDns && udpStreamWrite) {
-			await udpStreamWrite(chunk);
-			return;
-		}
-		if (remoteSocketWrapper.value) {
-			const writer = remoteSocketWrapper.value.writable.getWriter();
-			await writer.write(chunk);
-			writer.releaseLock();
-			return;
-		}
-		const {
-			hasError,
-			message,
-			portRemote = 443,
-			addressRemote = '',
-			rawDataIndex,
-			vlessVersion = new Uint8Array([0, 0]),
-			isUDP,
-		} = processVlessHeader(chunk, userID);
-		address = addressRemote;
-		if (hasError) {
-			throw new Error(message);
-		}
-		if (isUDP) {
-			if (portRemote === 53) {
-				isDns = true;
-			} else {
-				throw new Error('UDP proxy only enabled for DNS which is port 53');
-			}
-		}
-		const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
-		const rawClientData = chunk.slice(rawDataIndex);
-		if (isDns) {
-			const { write } = await handleUDPOutBound(webSocket, vlessResponseHeader);
-			udpStreamWrite = write;
-			await udpStreamWrite(rawClientData);
-			return;
-		}
-		handleTCPOutBound(remoteSocketWrapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
-	}
 	readableWebSocketStream.pipeTo(new WritableStream({
-		write(chunk, controller) {
-			handleChunk(chunk).catch(error => {
-				controller.error(error);
-			});
+		async write(chunk, controller) {
+			if (isDns && udpStreamWrite) {
+				return udpStreamWrite(chunk);
+			}
+			if (remoteSocketWapper.value) {
+				const writer = remoteSocketWapper.value.writable.getWriter()
+				await writer.write(chunk);
+				writer.releaseLock();
+				return;
+			}
+			const {
+				hasError,
+				message,
+				portRemote = 443,
+				addressRemote = '',
+				rawDataIndex,
+				vlessVersion = new Uint8Array([0, 0]),
+				isUDP,
+			} = processVlessHeader(chunk, userID);
+			address = addressRemote;
+			if (hasError) {
+				throw new Error(message);
+				return;
+			}
+			if (isUDP) {
+				if (portRemote === 53) {
+					isDns = true;
+				} else {
+					throw new Error('UDP proxy only enable for DNS which is port 53');
+					return;
+				}
+			}
+			const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
+			const rawClientData = chunk.slice(rawDataIndex);
+			if (isDns) {
+				const { write } = await handleUDPOutBound(webSocket, vlessResponseHeader);
+				udpStreamWrite = write;
+				udpStreamWrite(rawClientData);
+				return;
+			}
+			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
 		},
-		close() {},
-		abort(reason) {},
+		close() {
+		},
+		abort(reason) {
+		},
 	})).catch((err) => {});
 	return new Response(null, {
 		status: 101,
 		webSocket: client,
 	});
 }
-
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
 	async function connectAndWrite(address, port) {
 		const tcpSocket = connect({
@@ -324,26 +323,32 @@ function stringify(arr, offset = 0) {
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
 	let isVlessHeaderSent = false;
 	const transformStream = new TransformStream({
+		start(controller) {
+		},
 		transform(chunk, controller) {
-			let index = 0;
-			while (index < chunk.byteLength) {
+			for (let index = 0; index < chunk.byteLength;) {
 				const lengthBuffer = chunk.slice(index, index + 2);
-				const udpPacketLength = new DataView(lengthBuffer).getUint16(0);
-				const udpData = new Uint8Array(chunk.slice(index + 2, index + 2 + udpPacketLength));
-				index += 2 + udpPacketLength;
+				const udpPakcetLength = new DataView(lengthBuffer).getUint16(0);
+				const udpData = new Uint8Array(
+					chunk.slice(index + 2, index + 2 + udpPakcetLength)
+				);
+				index = index + 2 + udpPakcetLength;
 				controller.enqueue(udpData);
 			}
+		},
+		flush(controller) {
 		}
 	});
-	const writableStream = new WritableStream({
+	transformStream.readable.pipeTo(new WritableStream({
 		async write(chunk) {
-			const resp = await fetch('https://cloudflare-dns.com/dns-query', {
-				method: 'POST',
-				headers: {
-					'content-type': 'application/dns-message',
-				},
-				body: chunk,
-			});
+			const resp = await fetch('https://cloudflare-dns.com/dns-query',
+				{
+					method: 'POST',
+					headers: {
+						'content-type': 'application/dns-message',
+					},
+					body: chunk,
+				})
 			const dnsQueryResult = await resp.arrayBuffer();
 			const udpSize = dnsQueryResult.byteLength;
 			const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
@@ -351,15 +356,11 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
 				const blobParts = isVlessHeaderSent
 					? [udpSizeBuffer, dnsQueryResult]
 					: [vlessResponseHeader, udpSizeBuffer, dnsQueryResult];
-
 				webSocket.send(await new Blob(blobParts).arrayBuffer());
 				isVlessHeaderSent = true;
 			}
 		}
-	});
-	transformStream.readable.pipeTo(writableStream).catch((error) => {
-		console.error('Stream piping failed:', error);
-	});
+	})).catch((error) => {});
 	const writer = transformStream.writable.getWriter();
 	return { write: chunk => writer.write(chunk) };
 }
