@@ -72,10 +72,8 @@ async function vlessOverWSHandler(request) {
 			}
 			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
 		},
-		close() {
-		},
-		abort(reason) {
-		},
+		close() {},
+		abort(reason) {	},
 	})).catch((err) => {});
 	return new Response(null, {
 		status: 101,
@@ -180,26 +178,20 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 }
 
 function base64ToArrayBuffer(base64Str) {
-	if (!base64Str) {
-		return { error: null };
-	}
-	try {
-		base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
-		const decode = atob(base64Str);
-		const arryBuffer = Uint8Array.from(decode, (c) => c.charCodeAt(0));
-		return { earlyData: arryBuffer.buffer, error: null };
-	} catch (error) {
-		return { error };
-	}
-}
-
-function isValidUUID(uuid) {
-	const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-	return uuidRegex.test(uuid);
+    if (!base64Str) return { error: null };
+    try {
+        base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
+        const decode = atob(base64Str);
+        const arrayBuffer = Uint8Array.from(decode, (c) => c.charCodeAt(0));
+        return { earlyData: arrayBuffer.buffer, error: null };
+    } catch (error) {
+        return { error };
+    }
 }
 
 const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
+
 function safeCloseWebSocket(socket) {
     try {
         if ([WS_READY_STATE_OPEN, WS_READY_STATE_CLOSING].includes(socket.readyState)) {
@@ -248,7 +240,6 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
 function getVLESSConfig(userID, hostName) {
     return `
 ################################################################
-v2ray
 ---------------------------------------------------------------
 vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}
 ---------------------------------------------------------------
