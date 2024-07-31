@@ -32,9 +32,7 @@ async function vlessOverWSHandler(request) {
 	let address = '';
 	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
-	let remoteSocketWapper = { value: null };
-	let udpStreamWrite = null;
-	let isDns = false;
+	let remoteSocketWapper = { value: null }, udpStreamWrite = null, isDns = false;
 	readableWebSocketStream.pipeTo(new WritableStream({
 		async write(chunk, controller) {
 			if (isDns && udpStreamWrite) {
@@ -146,9 +144,8 @@ function base64ToArrayBuffer(base64Str) {
     if (!base64Str) return { error: null };
     try {
         base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
-        const decode = atob(base64Str);
-        const arrayBuffer = Uint8Array.from(decode, (c) => c.charCodeAt(0));
-        return { earlyData: arrayBuffer.buffer, error: null };
+        const arrayBuffer = Uint8Array.from(atob(base64Str), c => c.charCodeAt(0)).buffer;
+        return { earlyData: arrayBuffer, error: null };
     } catch (error) {
         return { error };
     }
