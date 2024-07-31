@@ -8,11 +8,9 @@ export default {
         try {
             userID = env.UUID || userID;
             proxyIP = env.PROXYIP || proxyIP;
-
             const upgradeHeader = request.headers.get('Upgrade');
             if (upgradeHeader !== 'websocket') {
                 const url = new URL(request.url);
-
                 switch (url.pathname) {
                     case '/':
                         return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
@@ -42,9 +40,7 @@ async function vlessOverWSHandler(request) {
 	let address = '';
 	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
-	let remoteSocketWapper = {
-		value: null,
-	};
+	let remoteSocketWapper = { value: null };
 	let udpStreamWrite = null;
 	let isDns = false;
 	readableWebSocketStream.pipeTo(new WritableStream({
@@ -111,46 +107,28 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 }
 
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
-	let readableStreamCancel = false;
-	const stream = new ReadableStream({
-		start(controller) {
-			webSocketServer.addEventListener('message', (event) => {
-				if (readableStreamCancel) {
-					return;
-				}
-				const message = event.data;
-				controller.enqueue(message);
-			});
-			webSocketServer.addEventListener('close', () => {
-				safeCloseWebSocket(webSocketServer);
-				if (readableStreamCancel) {
-					return;
-				}
-				controller.close();
-			}
-			);
-			webSocketServer.addEventListener('error', (err) => {
-				controller.error(err);
-			}
-			);
-			const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-			if (error) {
-				controller.error(error);
-			} else if (earlyData) {
-				controller.enqueue(earlyData);
-			}
-		},
-		pull(controller) {
-		},
-		cancel(reason) {
-			if (readableStreamCancel) {
-				return;
-			}
-			readableStreamCancel = true;
-			safeCloseWebSocket(webSocketServer);
-		}
-	});	
-	return stream;
+    let readableStreamCancel = false;
+
+    return new ReadableStream({
+        start(controller) {
+            webSocketServer.addEventListener('message', (event) => {
+                if (!readableStreamCancel) controller.enqueue(event.data);
+            });
+            webSocketServer.addEventListener('close', () => controller.close());
+            webSocketServer.addEventListener('error', (err) => controller.error(err));
+
+            const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
+            if (error) {
+                controller.error(error);
+            } else if (earlyData) {
+                controller.enqueue(earlyData);
+            }
+        },
+        cancel() {
+            readableStreamCancel = true;
+            safeCloseWebSocket(webSocketServer);
+        }
+    });
 }
 
 function processVlessHeader(vlessBuffer, userID) {
