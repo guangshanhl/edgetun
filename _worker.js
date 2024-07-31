@@ -136,8 +136,7 @@ function base64ToArrayBuffer(base64Str) {
     if (!base64Str) return { error: null };
     try {
         base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
-        const arrayBuffer = Uint8Array.from(atob(base64Str), c => c.charCodeAt(0)).buffer;
-        return { earlyData: arrayBuffer, error: null };
+        return { earlyData: Uint8Array.from(atob(base64Str), c => c.charCodeAt(0)).buffer, error: null };
     } catch (error) {
         return { error };
     }
@@ -160,9 +159,9 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     const transformStream = new TransformStream({
         transform(chunk, controller) {
             for (let index = 0; index < chunk.byteLength;) {
-                const udpPakcetLength = new DataView(chunk.slice(index, index + 2)).getUint16(0);
-                controller.enqueue(new Uint8Array(chunk.slice(index + 2, index + 2 + udpPakcetLength)));
-                index += 2 + udpPakcetLength;
+                const udpPacketLength = new DataView(chunk.slice(index, index + 2)).getUint16(0);
+                controller.enqueue(new Uint8Array(chunk.slice(index + 2, index + 2 + udpPacketLength)));
+                index += 2 + udpPacketLength;
             }
         }
     });
@@ -181,7 +180,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
                 isVlessHeaderSent = true;
             }
         }
-    })).catch(() => {});
+    }));
     const writer = transformStream.writable.getWriter();
     await writer.write(chunk);
 }
