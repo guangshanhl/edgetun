@@ -219,7 +219,7 @@ function stringify(arr, offset = 0) {
     return uuid;
 }
 
-async function handleUDPOutBound(webSocket, chunk, vlessResponseHeader) {
+async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     let isVlessHeaderSent = false;
     const transformStream = new TransformStream({
         transform(chunk, controller) {
@@ -230,7 +230,6 @@ async function handleUDPOutBound(webSocket, chunk, vlessResponseHeader) {
             }
         }
     });
-
     transformStream.readable.pipeTo(new WritableStream({
         async write(chunk) {
             const resp = await fetch('https://cloudflare-dns.com/dns-query', {
@@ -238,10 +237,8 @@ async function handleUDPOutBound(webSocket, chunk, vlessResponseHeader) {
                 headers: { 'content-type': 'application/dns-message' },
                 body: chunk
             });
-
             const dnsQueryResult = await resp.arrayBuffer();
             const udpSizeBuffer = new Uint8Array([(dnsQueryResult.byteLength >> 8) & 0xff, dnsQueryResult.byteLength & 0xff]);
-
             if (webSocket.readyState === WS_READY_STATE_OPEN) {
                 const blobParts = isVlessHeaderSent ? [udpSizeBuffer, dnsQueryResult] : [vlessResponseHeader, udpSizeBuffer, dnsQueryResult];
                 webSocket.send(await new Blob(blobParts).arrayBuffer());
@@ -249,7 +246,6 @@ async function handleUDPOutBound(webSocket, chunk, vlessResponseHeader) {
             }
         }
     })).catch(() => {});
-
     const writer = transformStream.writable.getWriter();
     await writer.write(chunk);
 }
