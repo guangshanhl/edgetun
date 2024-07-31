@@ -71,17 +71,27 @@ async function vlessOverWSHandler(request) {
     });
 }
 
-async function handleTCPOutBound(addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
-    const tcpSocket = await connectAndWrite(addressRemote, portRemote, rawClientData);
-    remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, () => handleTCPOutBound(proxyIP || addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader));
-}
-
-async function connectAndWrite(address, port, rawClientData) {
-    const tcpSocket = connect({ hostname: address, port: port });
-    const writer = tcpSocket.writable.getWriter();
-    await writer.write(rawClientData);
-    writer.releaseLock();
-    return tcpSocket;
+async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
+	async function connectAndWrite(address, port) {
+		const tcpSocket = connect({
+			hostname: address,
+			port: port,
+		});
+		remoteSocket.value = tcpSocket;
+		const writer = tcpSocket.writable.getWriter();
+		await writer.write(rawClientData);
+		writer.releaseLock();
+		return tcpSocket;
+	}
+	async function retry() {
+		const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote)
+		tcpSocket.closed.catch(error => {}).finally(() => {
+			safeCloseWebSocket(webSocket);
+		})
+		remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
+	}
+	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
+	remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
 }
 
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
