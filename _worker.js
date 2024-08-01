@@ -70,21 +70,38 @@ async function vlessOverWSHandler(request) {
 }
 
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
-    async function connectAndWrite(address, port) {
+    async function connectAndWrite(address, port, data) {
         const tcpSocket = connect({ hostname: address, port });
         remoteSocket.value = tcpSocket;
         const writer = tcpSocket.writable.getWriter();
-        await writer.write(rawClientData);
-        writer.releaseLock();
+        try {
+            await writer.write(data);
+        } finally {
+            writer.releaseLock();
+        }
         return tcpSocket;
     }
     async function retry() {
-        const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
-        tcpSocket.closed.catch(() => {}).finally(() => safeCloseWebSocket(webSocket));
-        remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
+        try {
+            const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote, rawClientData);
+            remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
+            await tcpSocket.closed;
+        } catch (error) {
+            console.error('Retry failed:', error);
+        } finally {
+            safeCloseWebSocket(webSocket);
+        }
     }
-    const tcpSocket = await connectAndWrite(addressRemote, portRemote);
-    remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
+    try {
+        const tcpSocket = await connectAndWrite(addressRemote, portRemote, rawClientData);
+        remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
+        await tcpSocket.closed;
+    } catch (error) {
+        console.error('Initial connection failed:', error);
+        await retry();
+    } finally {
+        safeCloseWebSocket(webSocket);
+    }
 }
 
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
