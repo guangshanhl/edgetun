@@ -86,13 +86,25 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 }
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
     let readableStreamCancel = false;
+
     return new ReadableStream({
         start(controller) {
-            webSocketServer.addEventListener('message', event => !readableStreamCancel && controller.enqueue(event.data));
+            const handleMessage = event => {
+                if (!readableStreamCancel) {
+                    controller.enqueue(event.data);
+                }
+            };
+
+            webSocketServer.addEventListener('message', handleMessage);
             webSocketServer.addEventListener('close', () => controller.close());
-            webSocketServer.addEventListener('error', (err) => controller.error(err));
+            webSocketServer.addEventListener('error', err => controller.error(err));
+
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-            error ? controller.error(error) : earlyData && controller.enqueue(earlyData);
+            if (error) {
+                controller.error(error);
+            } else if (earlyData) {
+                controller.enqueue(earlyData);
+            }
         },
         cancel() {
             readableStreamCancel = true;
@@ -100,6 +112,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
         }
     });
 }
+
 function processVlessHeader(vlessBuffer, userID) {
     if (vlessBuffer.byteLength < 24) return { hasError: true };
     const version = new Uint8Array(vlessBuffer.slice(0, 1));
