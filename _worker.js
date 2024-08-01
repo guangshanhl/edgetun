@@ -160,7 +160,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
         transform(chunk, controller) {
             for (let index = 0; index < chunk.byteLength;) {
                 const udpPacketLength = new DataView(chunk.slice(index, index + 2)).getUint16(0);
-                controller.enqueue(new Uint8Array(chunk.slice(index + 2, index + 2 + udpPacketLength)));
+                controller.enqueue(chunk.slice(index + 2, index + 2 + udpPacketLength));
                 index += 2 + udpPacketLength;
             }
         }
