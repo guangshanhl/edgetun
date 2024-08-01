@@ -1,14 +1,11 @@
 import { connect } from 'cloudflare:sockets';
 
-let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
-let proxyIP = '';
-
 export default {
     async fetch(request, env) {
         try {
-            userID = env.UUID || userID;
-            proxyIP = env.PROXYIP || proxyIP;
-            const upgradeHeader = request.headers.get('Upgrade');
+		const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
+		const proxyIP = env.PROXYIP || '';
+		const upgradeHeader = request.headers.get('Upgrade');
             if (upgradeHeader !== 'websocket') {
                 const url = new URL(request.url);
 	        switch (url.pathname) {
@@ -17,7 +14,7 @@ export default {
 			default: url.hostname = 'bing.com'; url.protocol = 'https:'; return await fetch(new Request(url, request));
 		}
             } else {
-                return await vlessOverWSHandler(request);
+                return await vlessOverWSHandler(request, userID, proxyIP);
             }
         } catch (err) {
             return new Response(err.toString());
@@ -25,7 +22,7 @@ export default {
     },
 };
 
-async function vlessOverWSHandler(request) {
+async function vlessOverWSHandler(request, userID, proxyIP) {
     const webSocketPair = new WebSocketPair();
     const [client, webSocket] = Object.values(webSocketPair);
     webSocket.accept();
@@ -62,46 +59,29 @@ async function vlessOverWSHandler(request) {
                 udpStreamWrite = write;
                 udpStreamWrite(rawClientData);
             } else {
-                handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
+                handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
             }
         },
     }));
     return new Response(null, { status: 101, webSocket: client });
 }
 
-async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
-    async function connectAndWrite(address, port, data) {
+async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP) {
+    async function connectAndWrite(address, port) {
         const tcpSocket = connect({ hostname: address, port });
         remoteSocket.value = tcpSocket;
         const writer = tcpSocket.writable.getWriter();
-        try {
-            await writer.write(data);
-        } finally {
-            writer.releaseLock();
-        }
+        await writer.write(rawClientData);
+        writer.releaseLock();
         return tcpSocket;
     }
     async function retry() {
-        try {
-            const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote, rawClientData);
-            remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
-            await tcpSocket.closed;
-        } catch (error) {
-            console.error('Retry failed:', error);
-        } finally {
-            safeCloseWebSocket(webSocket);
-        }
+        const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
+        tcpSocket.closed.catch(() => {}).finally(() => safeCloseWebSocket(webSocket));
+        remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
     }
-    try {
-        const tcpSocket = await connectAndWrite(addressRemote, portRemote, rawClientData);
-        remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
-        await tcpSocket.closed;
-    } catch (error) {
-        console.error('Initial connection failed:', error);
-        await retry();
-    } finally {
-        safeCloseWebSocket(webSocket);
-    }
+    const tcpSocket = await connectAndWrite(addressRemote, portRemote);
+    remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
 }
 
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
