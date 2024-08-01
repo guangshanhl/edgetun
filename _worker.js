@@ -14,7 +14,7 @@ export default {
 	        switch (url.pathname) {
 			case '/': return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
 		    	case `/${userID}`: return new Response(getVLESSConfig(userID, request.headers.get('Host')), { status: 200, headers: { "Content-Type": "text/plain;charset=utf-8" } });
-			default: url.hostname = 'www.bing.com'; url.protocol = 'https:'; return await fetch(new Request(url, request));
+			default: url.hostname = 'https://www.bing.com'; url.protocol = 'https:'; return await fetch(new Request(url, request));
 		}
             } else {
                 return await vlessOverWSHandler(request);
