@@ -197,8 +197,7 @@ function safeCloseWebSocket(socket) {
 }
 
 function stringify(arr) {
-    const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
-    return Array.from({ length: 16 }, (_, i) => byteToHex[arr[i]]).join('').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5').toLowerCase();
+  return arr.map(byte => byte.toString(16).padStart(2, "0")).join("").toLowerCase();
 }
 
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
