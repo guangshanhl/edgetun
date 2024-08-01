@@ -221,7 +221,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
             });
             const dnsQueryResult = await resp.arrayBuffer();
             const udpSizeBuffer = new Uint8Array([(dnsQueryResult.byteLength >> 8) & 0xff, dnsQueryResult.byteLength & 0xff]);
-            if (webSocket.readyState === WS_READY_STATE_OPEN) {
+            if (webSocket.readyState === WebSocket.OPEN) {
                 const blobParts = isVlessHeaderSent ? [udpSizeBuffer, dnsQueryResult] : [vlessResponseHeader, udpSizeBuffer, dnsQueryResult];
                 webSocket.send(await new Blob(blobParts).arrayBuffer());
                 isVlessHeaderSent = true;
