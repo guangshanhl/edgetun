@@ -22,7 +22,7 @@ export default {
                         return await fetch(new Request(url, request));
                 }
             } else {
-                return await vlessOverWSHandler(request, userID);
+                return await vlessOverWSHandler(request, userID, proxyIP);
             }
         } catch (err) {
             return new Response(err.toString());
@@ -30,7 +30,7 @@ export default {
     },
 };
 
-async function vlessOverWSHandler(request, userID) {
+async function vlessOverWSHandler(request, userID, proxyIP) {
     const webSocketPair = new WebSocketPair();
     const [client, webSocket] = Object.values(webSocketPair);
     webSocket.accept();
