@@ -160,7 +160,7 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
         await remoteSocket.readable.pipeTo(new WritableStream({
             async write(chunk) {
                 hasIncomingData = true;
-                if (webSocket.readyState !== WS_READY_STATE_OPEN) throw new Error('readyState is not open');
+                if (webSocket.readyState !== WebSocket.OPEN) throw new Error('readyState is not open');
                 const dataToSend = vlessResponseHeader ? await new Blob([vlessResponseHeader, chunk]).arrayBuffer() : chunk;
                 webSocket.send(dataToSend);
                 vlessResponseHeader = null;
@@ -182,12 +182,9 @@ function base64ToArrayBuffer(base64Str) {
     }
 }
 
-const WS_READY_STATE_OPEN = 1;
-const WS_READY_STATE_CLOSING = 2;
-
 function safeCloseWebSocket(socket) {
     try {
-        if ([WS_READY_STATE_OPEN, WS_READY_STATE_CLOSING].includes(socket.readyState)) {
+        if ([WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
             socket.close();
         }
     } catch {}
@@ -221,7 +218,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
                 (dnsQueryResult.byteLength >> 8) & 0xff, 
                 dnsQueryResult.byteLength & 0xff
             ]);         
-            if (webSocket.readyState === WS_READY_STATE_OPEN) {
+            if (webSocket.readyState === WebSocket.OPEN) {
                 const blobParts = isVlessHeaderSent 
                     ? [udpSizeBuffer, dnsQueryResult] 
                     : [vlessResponseHeader, udpSizeBuffer, dnsQueryResult];
