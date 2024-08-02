@@ -189,11 +189,11 @@ function base64ToArrayBuffer(base64Str) {
 }
 
 function safeCloseWebSocket(socket) {
-    try {
-        if ([WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
+    if (socket && [WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
+        try {
             socket.close();
-        }
-    } catch {}
+        } catch {}
+    }
 }
 
 function stringify(arr) {
