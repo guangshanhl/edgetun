@@ -162,21 +162,24 @@ function processVlessHeader(vlessBuffer, userID) {
 
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
     let hasIncomingData = false;
+
     try {
         await remoteSocket.readable.pipeTo(new WritableStream({
             async write(chunk) {
                 hasIncomingData = true;
                 if (webSocket.readyState !== WebSocket.OPEN) throw new Error('readyState is not open');
-                const dataToSend = vlessResponseHeader ? await new Blob([vlessResponseHeader, chunk]).arrayBuffer() : chunk;
-                webSocket.send(dataToSend);
+                const dataToSend = vlessResponseHeader ? new Blob([vlessResponseHeader, chunk]).arrayBuffer() : chunk;
+                webSocket.send(await dataToSend);
                 vlessResponseHeader = null;
             }
         }));
     } catch {
         safeCloseWebSocket(webSocket);
     }
+
     if (!hasIncomingData && retry) retry();
 }
+
 
 function base64ToArrayBuffer(base64Str) {
     try {
@@ -199,7 +202,10 @@ function safeCloseWebSocket(socket) {
 
 function stringify(arr) {
     const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
-    return Array.from({ length: 16 }, (_, i) => byteToHex[arr[i]]).join('').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5').toLowerCase();
+    return Array.from(arr.slice(0, 16), byte => byteToHex[byte])
+                .join('')
+                .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5')
+                .toLowerCase();
 }
 
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
