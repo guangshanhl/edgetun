@@ -96,18 +96,38 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
     let readableStreamCancel = false;
+
+    const handleMessage = event => {
+        if (!readableStreamCancel) {
+            controller.enqueue(event.data);
+        }
+    };
+
+    const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
+    if (error) {
+        return new ReadableStream({ start(controller) { controller.error(error); } });
+    }
+
+    if (earlyData) {
+        return new ReadableStream({
+            start(controller) {
+                controller.enqueue(earlyData);
+                webSocketServer.addEventListener('message', handleMessage);
+                webSocketServer.addEventListener('close', () => controller.close());
+                webSocketServer.addEventListener('error', err => controller.error(err));
+            },
+            cancel() {
+                readableStreamCancel = true;
+                safeCloseWebSocket(webSocketServer);
+            }
+        });
+    }
+
     return new ReadableStream({
         start(controller) {
-            const handleMessage = event => { if (!readableStreamCancel) controller.enqueue(event.data); };
             webSocketServer.addEventListener('message', handleMessage);
             webSocketServer.addEventListener('close', () => controller.close());
             webSocketServer.addEventListener('error', err => controller.error(err));
-            const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-            if (error) {
-                controller.error(error);
-            } else if (earlyData) {
-                controller.enqueue(earlyData);
-            }
         },
         cancel() {
             readableStreamCancel = true;
@@ -115,6 +135,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
         }
     });
 }
+
 
 function processVlessHeader(vlessBuffer, userID) {
     if (vlessBuffer.byteLength < 24) return { hasError: true };
