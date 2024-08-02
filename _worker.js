@@ -27,7 +27,6 @@ export default {
         }
     }
 };
-
 async function vlessOverWSHandler(request, userID, proxyIP) {
     const webSocketPair = new WebSocketPair();
     const [client, webSocket] = Object.values(webSocketPair);
@@ -71,7 +70,6 @@ async function vlessOverWSHandler(request, userID, proxyIP) {
     }));
     return new Response(null, { status: 101, webSocket: client });
 }
-
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP) {
     async function connectAndWrite(address, port) {
         const tcpSocket = connect({ hostname: address, port });
@@ -89,7 +87,6 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
     const tcpSocket = await connectAndWrite(addressRemote, portRemote);
     remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
 }
-
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
     let readableStreamCancel = false;
     return new ReadableStream({
@@ -107,7 +104,6 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
         }
     });
 }
-
 function processVlessHeader(vlessBuffer, userID) {
     if (vlessBuffer.byteLength < 24) return { hasError: true };
     const version = new Uint8Array(vlessBuffer.slice(0, 1))[0];
@@ -123,17 +119,16 @@ function processVlessHeader(vlessBuffer, userID) {
     const addressType = new DataView(vlessBuffer.slice(addressIndex, addressIndex + 1)).getUint8();
     let addressValue = '';
     const addressValueIndex = addressIndex + 1;
-    const addressLength = (() => {
+    const addressLength = ( => {
     switch (addressType) {
         case 1: addressValue = Array.from(new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + 4))).join('.'); return 4;
         case 2: const length = new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)).getUint8(); addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex + 1, addressValueIndex + 1 + length)); return 1 + length;
         case 3: addressValue = Array.from({ length: 8 }, (_, i) => new DataView(vlessBuffer.slice(addressValueIndex + i * 2, addressValueIndex + (i + 1) * 2)).getUint16(0).toString(16)).join(':'); return 16;
         default: return 0;
     }
-    })();
+    });
     if (!addressValue) return { hasError: true }; return { hasError: false, addressRemote: addressValue, portRemote, rawDataIndex: addressValueIndex + addressLength, vlessVersion: version, isUDP };
 }
-
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
     let hasIncomingData = false;
     try {
@@ -151,7 +146,6 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
     }
     if (!hasIncomingData && retry) retry();
 }
-
 function base64ToArrayBuffer(base64Str) {
     try {
         if (!base64Str) return { error: null };
@@ -162,7 +156,6 @@ function base64ToArrayBuffer(base64Str) {
         return { error };
     }
 }
-
 function safeCloseWebSocket(socket) {
     if (socket && [WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
         try {
@@ -170,7 +163,6 @@ function safeCloseWebSocket(socket) {
         } catch {}
     }
 }
-
 function stringify(arr) {
     const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
     return Array.from(arr.slice(0, 16), byte => byteToHex[byte])
@@ -178,7 +170,6 @@ function stringify(arr) {
                 .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5')
                 .toLowerCase();
 }
-
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     let isVlessHeaderSent = false;
     const transformStream = new TransformStream({
@@ -206,7 +197,6 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     }));
     await transformStream.writable.getWriter().write(chunk);
 }
-
 function getVLESSConfig(userID, hostName) {
     return `
 ################################################################
