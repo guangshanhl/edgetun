@@ -210,14 +210,11 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     let isVlessHeaderSent = false;
     const transformStream = new TransformStream({
         transform(chunk, controller) {
-            for (let index = 0; index < chunk.byteLength;) {
-                const udpPacketLength = new DataView(chunk.slice(index, index + 2)).getUint16(0);
-                controller.enqueue(chunk.slice(index + 2, index + 2 + udpPacketLength));
-                index += 2 + udpPacketLength;
+            for (let index = 0; index < chunk.byteLength; index += 2 + new DataView(chunk.slice(index, index + 2)).getUint16(0)) {
+                controller.enqueue(chunk.slice(index + 2, index + 2 + new DataView(chunk.slice(index, index + 2)).getUint16(0)));
             }
         }
     });
-
     transformStream.readable.pipeTo(new WritableStream({
         async write(chunk) {
             const resp = await fetch('https://cloudflare-dns.com/dns-query', {
@@ -234,9 +231,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
             }
         }
     }));
-
-    const writer = transformStream.writable.getWriter();
-    await writer.write(chunk);
+    await transformStream.writable.getWriter().write(chunk);
 }
 
 function getVLESSConfig(userID, hostName) {
