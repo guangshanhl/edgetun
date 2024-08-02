@@ -66,29 +66,29 @@ async function handleWebSocket(request, userID, proxyIP) {
                 udpStreamWrite = write;
                 udpStreamWrite(rawClientData);
             } else {
-                handleTCPOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
+                handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
             }
         },
     }));
     return new Response(null, { status: 101, webSocket: client });
 }
 
-async function handleTCPOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP) {
+async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP) {
     const connectAndWrite = async (address, port) => {
-        const tcpSocket = connect({ hostname: address, port });
-        remoteSocket.value = tcpSocket;
-        const writer = tcpSocket.writable.getWriter();
+        const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
+        remoteSocket.value = quicSocket;
+        const writer = quicSocket.writable.getWriter();
         await writer.write(rawClientData);
         writer.releaseLock();
-        return tcpSocket;
+        return quicSocket;
     };
     const retry = async () => {
-        const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
-        tcpSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
-        forwardDataToWebSocket(tcpSocket, webSocket, vlessResponseHeader, null);
+        const quicSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
+        quicSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
+        forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, null);
     };
-    const tcpSocket = await connectAndWrite(addressRemote, portRemote);
-    forwardDataToWebSocket(tcpSocket, webSocket, vlessResponseHeader, retry);
+    const quicSocket = await connectAndWrite(addressRemote, portRemote);
+    forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, retry);
 }
 
 function createReadableWebSocketStream(webSocket, earlyDataHeader) {
