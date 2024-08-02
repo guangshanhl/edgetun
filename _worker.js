@@ -6,8 +6,9 @@ export default {
             const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
             const proxyIP = env.PROXYIP || '';
             const upgradeHeader = request.headers.get('Upgrade');
+
             if (upgradeHeader === 'websocket') {
-                return await handleWebSocket(request, userID, proxyIP);
+                return handleWebSocket(request, userID, proxyIP);
             }
             return handleNonWebSocketRequest(request, userID);
         } catch (err) {
@@ -18,6 +19,7 @@ export default {
 
 async function handleNonWebSocketRequest(request, userID) {
     const url = new URL(request.url);
+
     switch (url.pathname) {
         case '/':
             return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
@@ -40,6 +42,7 @@ async function handleWebSocket(request, userID, proxyIP) {
 
     const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
     const readableStream = createReadableWebSocketStream(webSocket, earlyDataHeader);
+
     let remoteSocket = { value: null };
     let udpStreamWrite = null;
     let isDns = false;
@@ -74,7 +77,7 @@ async function handleWebSocket(request, userID, proxyIP) {
                 udpStreamWrite = write;
                 udpStreamWrite(rawClientData);
             } else {
-                handleTCPOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
+                await handleTCPOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
             }
         },
     }));
@@ -90,11 +93,12 @@ async function handleTCPOutbound(remoteSocket, addressRemote, portRemote, rawCli
     await writer.write(rawClientData);
     writer.releaseLock();
 
-    forwardDataToWebSocket(tcpSocket, webSocket, vlessResponseHeader);
+    await forwardDataToWebSocket(tcpSocket, webSocket, vlessResponseHeader);
 }
 
 function createReadableWebSocketStream(webSocket, earlyDataHeader) {
     let isCancelled = false;
+
     return new ReadableStream({
         start(controller) {
             const handleMessage = event => {
@@ -102,9 +106,11 @@ function createReadableWebSocketStream(webSocket, earlyDataHeader) {
                     controller.enqueue(event.data);
                 }
             };
+
             webSocket.addEventListener('message', handleMessage);
             webSocket.addEventListener('close', () => controller.close());
             webSocket.addEventListener('error', err => controller.error(err));
+
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
             if (error) {
                 controller.error(error);
@@ -187,6 +193,7 @@ async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHead
     } catch {
         closeWebSocketSafely(webSocket);
     }
+
     if (!hasIncomingData) {
         closeWebSocketSafely(webSocket);
     }
@@ -231,20 +238,26 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader) {
 
     transformStream.readable.pipeTo(new WritableStream({
         async write(chunk) {
-            const response = await fetch('https://cloudflare-dns.com/dns-query', {
-                method: 'POST',
-                headers: { 'content-type': 'application/dns-message' },
-                body: chunk
-            });
-            const dnsResult = await response.arrayBuffer();
-            const udpSizeBuffer = new Uint8Array([(dnsResult.byteLength >> 8) & 0xff, dnsResult.byteLength & 0xff]);
+            try {
+                const response = await fetch('https://cloudflare-dns.com/dns-query', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/dns-message' },
+                    body: chunk
+                });
 
-            if (webSocket.readyState === WebSocket.OPEN) {
-                const blobParts = isHeaderSent
-                    ? [udpSizeBuffer, dnsResult]
-                    : [vlessResponseHeader, udpSizeBuffer, dnsResult];
-                webSocket.send(await new Blob(blobParts).arrayBuffer());
-                isHeaderSent = true;
+                const dnsResult = await response.arrayBuffer();
+                const udpSizeBuffer = new Uint8Array([(dnsResult.byteLength >> 8) & 0xff, dnsResult.byteLength & 0xff]);
+
+                if (webSocket.readyState === WebSocket.OPEN) {
+                    const blobParts = isHeaderSent
+                        ? [udpSizeBuffer, dnsResult]
+                        : [vlessResponseHeader, udpSizeBuffer, dnsResult];
+
+                    webSocket.send(await new Blob(blobParts).arrayBuffer());
+                    isHeaderSent = true;
+                }
+            } catch (err) {
+                closeWebSocketSafely(webSocket);
             }
         }
     }));
