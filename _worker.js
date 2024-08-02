@@ -18,6 +18,24 @@ export default {
     },
 };
 
+async function handleNonWebSocketRequest(request, userID) {
+    const url = new URL(request.url);
+
+    switch (url.pathname) {
+        case '/':
+            return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
+        case `/${userID}`:
+            return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
+                status: 200,
+                headers: { "Content-Type": "text/plain;charset=utf-8" }
+            });
+        default:
+            url.hostname = 'bing.com';
+            url.protocol = 'https:';
+            return await fetch(new Request(url, request));
+    }
+}
+
 async function handleWebSocket(request, userID, proxyIP) {
     const webSocketPair = new WebSocketPair();
     const [client, webSocket] = Object.values(webSocketPair);
