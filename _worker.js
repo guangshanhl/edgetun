@@ -119,14 +119,14 @@ function processVlessHeader(vlessBuffer, userID) {
     const addressType = new DataView(vlessBuffer.slice(addressIndex, addressIndex + 1)).getUint8();
     let addressValue = '';
     const addressValueIndex = addressIndex + 1;
-    const addressLength = (() => {
+    const addressLength = ( => {
     switch (addressType) {
         case 1: addressValue = Array.from(new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + 4))).join('.'); return 4;
         case 2: const length = new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)).getUint8(); addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex + 1, addressValueIndex + 1 + length)); return 1 + length;
         case 3: addressValue = Array.from({ length: 8 }, (_, i) => new DataView(vlessBuffer.slice(addressValueIndex + i * 2, addressValueIndex + (i + 1) * 2)).getUint16(0).toString(16)).join(':'); return 16;
         default: return 0;
     }
-    })();
+    });
     if (!addressValue) return { hasError: true }; return { hasError: false, addressRemote: addressValue, portRemote, rawDataIndex: addressValueIndex + addressLength, vlessVersion: version, isUDP };
 }
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
@@ -160,7 +160,7 @@ function safeCloseWebSocket(socket) {
     if (socket && [WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
         try {
             socket.close();
-        } catch ()
+        } catch {}
     }
 }
 function stringify(arr) {
