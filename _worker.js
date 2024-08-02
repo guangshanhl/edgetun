@@ -39,8 +39,7 @@ async function handleWebSocket(request, userID, proxyIP) {
     const readableStream = createReadableWebSocketStream(webSocket, earlyDataHeader);
     let remoteSocket = { value: null };
     let udpStreamWrite = null;
-    let isDns = false;
-    
+    let isDns = false;    
     readableStream.pipeTo(new WritableStream({
         async write(chunk) {
             if (isDns && udpStreamWrite) {
@@ -170,12 +169,12 @@ async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHead
                 hasIncomingData = true;
                 if (webSocket.readyState !== WebSocket.OPEN) throw new Error('WebSocket is not open');
                 
-                const dataToSend = vlessResponseHeader
-                    ? await new Blob([vlessResponseHeader, chunk]).arrayBuffer()
-                    : chunk;
-                
-                webSocket.send(dataToSend);
-                vlessResponseHeader = null;
+                if (vlessResponseHeader) {
+                    webSocket.send(new Uint8Array([...vlessResponseHeader, ...new Uint8Array(chunk)]).buffer);
+                    vlessResponseHeader = null;
+                } else {
+                    webSocket.send(chunk);
+                }
             }
         }));
     } catch {
@@ -188,7 +187,13 @@ function base64ToArrayBuffer(base64Str) {
     if (!base64Str) return { error: null };
     try {
         base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
-        return { earlyData: Uint8Array.from(atob(base64Str), c => c.charCodeAt(0)).buffer, error: null };
+        const binaryString = atob(base64Str);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return { earlyData: bytes.buffer, error: null };
     } catch (error) {
         return { error };
     }
@@ -231,10 +236,7 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader) {
             const dnsResult = await response.arrayBuffer();
             const udpSizeBuffer = new Uint8Array([(dnsResult.byteLength >> 8) & 0xff, dnsResult.byteLength & 0xff]);
             if (webSocket.readyState === WebSocket.OPEN) {
-                const blobParts = isHeaderSent
-                    ? [udpSizeBuffer, dnsResult]
-                    : [vlessResponseHeader, udpSizeBuffer, dnsResult];
-                webSocket.send(await new Blob(blobParts).arrayBuffer());
+                webSocket.send(new Uint8Array([...(!isHeaderSent ? vlessResponseHeader : []), ...udpSizeBuffer, ...new Uint8Array(dnsResult)]).buffer);
                 isHeaderSent = true;
             }
         }
