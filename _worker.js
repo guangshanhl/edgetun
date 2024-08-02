@@ -204,16 +204,8 @@ function closeWebSocketSafely(socket) {
 }
 
 const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
-
 function stringify(arr) {
-    if (arr.length < 16) {
-        throw new Error('Array must have at least 16 elements.');
-    }
-    let hexString = '';
-    for (let i = 0; i < 16; i++) {
-        hexString += byteToHex[arr[i]];
-    }
-    return hexString
+    return Array.from(arr.slice(0, 16), byte => byteToHex[byte]).join('')
         .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5')
         .toLowerCase();
 }
