@@ -179,10 +179,11 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 }
 
 function base64ToArrayBuffer(base64Str) {
-    if (!base64Str) return { error: null };
     try {
-        base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
-        return { earlyData: Uint8Array.from(atob(base64Str), c => c.charCodeAt(0)).buffer, error: null };
+        if (!base64Str) return { error: null };
+        const formattedStr = base64Str.replace(/-/g, '+').replace(/_/g, '/');
+        const earlyData = Uint8Array.from(atob(formattedStr), c => c.charCodeAt(0)).buffer;
+        return { earlyData, error: null };
     } catch (error) {
         return { error };
     }
