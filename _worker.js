@@ -2,32 +2,31 @@ import { connect } from 'cloudflare:sockets';
 
 export default {
     async fetch(request, env) {
+        const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
+        const proxyIP = env.PROXYIP || '';
+        const upgradeHeader = request.headers.get('Upgrade');
+        if (upgradeHeader === 'websocket') {
+            return await vlessOverWSHandler(request, userID, proxyIP);
+        }
         try {
-            const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
-            const proxyIP = env.PROXYIP || '';
-            const upgradeHeader = request.headers.get('Upgrade');
-            if (upgradeHeader !== 'websocket') {
-                const url = new URL(request.url);
-                switch (url.pathname) {
-                    case '/':
-                        return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
-                    case `/${userID}`:
-                        return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
-                            status: 200,
-                            headers: { "Content-Type": "text/plain;charset=utf-8" }
-                        });
-                    default:
-                        url.hostname = 'bing.com';
-                        url.protocol = 'https:';
-                        return await fetch(new Request(url, request));
-                }
-            } else {
-                return await vlessOverWSHandler(request, userID, proxyIP);
+            const url = new URL(request.url);
+            switch (url.pathname) {
+                case '/':
+                    return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
+                case `/${userID}`:
+                    return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
+                        status: 200,
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                    });
+                default:
+                    url.hostname = 'bing.com';
+                    url.protocol = 'https:';
+                    return await fetch(new Request(url, request));
             }
         } catch (err) {
-            return new Response(err.toString());
+            return new Response(err.toString(), { status: 500 });
         }
-    },
+    }
 };
 
 async function vlessOverWSHandler(request, userID, proxyIP) {
