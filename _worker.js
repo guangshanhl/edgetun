@@ -203,9 +203,17 @@ function closeWebSocketSafely(socket) {
     } catch {}
 }
 
+const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
+
 function stringify(arr) {
-    const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
-    return Array.from({ length: 16 }, (_, i) => byteToHex[arr[i]]).join('')
+    if (arr.length < 16) {
+        throw new Error('Array must have at least 16 elements.');
+    }
+    let hexString = '';
+    for (let i = 0; i < 16; i++) {
+        hexString += byteToHex[arr[i]];
+    }
+    return hexString
         .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5')
         .toLowerCase();
 }
