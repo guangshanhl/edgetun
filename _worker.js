@@ -160,7 +160,7 @@ function safeCloseWebSocket(socket) {
     if (socket && [WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
         try {
             socket.close();
-        } catch {}
+        } catch ()
     }
 }
 function stringify(arr) {
