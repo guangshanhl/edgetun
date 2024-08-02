@@ -24,7 +24,7 @@ export default {
                     return await fetch(new Request(url, request));
             }
         } catch (err) {
-            return new Response(err.toString(), { status: 500 });
+            return new Response(err.toString());
         }
     }
 };
@@ -36,9 +36,7 @@ async function vlessOverWSHandler(request, userID, proxyIP) {
     let address = '';
     const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
     const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
-    let remoteSocketWapper = { value: null },
-        udpStreamWrite = null,
-        isDns = false;
+    let remoteSocketWapper = { value: null }, udpStreamWrite = null, isDns = false;
     readableWebSocketStream.pipeTo(new WritableStream({
         async write(chunk) {
             if (isDns && udpStreamWrite) {
@@ -134,15 +132,7 @@ function processVlessHeader(vlessBuffer, userID) {
         default: return 0;
     }
     })();
-    if (!addressValue) return { hasError: true };
-    return {
-        hasError: false,
-        addressRemote: addressValue,
-        portRemote,
-        rawDataIndex: addressValueIndex + addressLength,
-        vlessVersion: version,
-        isUDP
-    };
+    if (!addressValue) return { hasError: true }; return { hasError: false, addressRemote: addressValue, portRemote, rawDataIndex: addressValueIndex + addressLength, vlessVersion: version, isUDP };
 }
 
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
