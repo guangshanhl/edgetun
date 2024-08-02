@@ -102,11 +102,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
             webSocketServer.addEventListener('close', () => controller.close());
             webSocketServer.addEventListener('error', err => controller.error(err));
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-            if (error) {
-                controller.error(error);
-            } else if (earlyData) {
-                controller.enqueue(earlyData);
-            }
+            if (error) controller.error(error); else if (earlyData) controller.enqueue(earlyData);
         },
         cancel() {
             readableStreamCancel = true;
@@ -131,20 +127,12 @@ function processVlessHeader(vlessBuffer, userID) {
     let addressValue = '';
     const addressValueIndex = addressIndex + 1;
     const addressLength = (() => {
-        switch (addressType) {
-            case 1:
-                addressValue = Array.from(new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + 4))).join('.');
-                return 4;
-            case 2:
-                const length = new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)).getUint8();
-                addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex + 1, addressValueIndex + 1 + length));
-                return 1 + length;
-            case 3:
-                addressValue = Array.from({ length: 8 }, (_, i) => new DataView(vlessBuffer.slice(addressValueIndex + i * 2, addressValueIndex + (i + 1) * 2)).getUint16(0).toString(16)).join(':');
-                return 16;
-            default:
-                return 0;
-        }
+    switch (addressType) {
+        case 1: addressValue = Array.from(new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + 4))).join('.'); return 4;
+        case 2: const length = new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)).getUint8(); addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex + 1, addressValueIndex + 1 + length)); return 1 + length;
+        case 3: addressValue = Array.from({ length: 8 }, (_, i) => new DataView(vlessBuffer.slice(addressValueIndex + i * 2, addressValueIndex + (i + 1) * 2)).getUint16(0).toString(16)).join(':'); return 16;
+        default: return 0;
+    }
     })();
     if (!addressValue) return { hasError: true };
     return {
