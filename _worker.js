@@ -3,8 +3,6 @@ import { connect } from 'cloudflare:sockets';
 export default {
     async fetch(request, env) {
         try {
-            env.warp = 'on';
-            env.rbi = 'on';
             const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
             const proxyIP = env.PROXYIP || '';
             const upgradeHeader = request.headers.get('Upgrade');
