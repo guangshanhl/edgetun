@@ -204,11 +204,11 @@ function base64ToArrayBuffer(base64Str) {
 }
 
 function closeWebSocketSafely(socket) {
-    try {
-        if ([WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
+    if ([WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
+        try {
             socket.close();
-        }
-    } catch {}
+        } catch (error) { }
+    }
 }
 
 const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
