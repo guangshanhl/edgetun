@@ -126,22 +126,19 @@ function createReadableWebSocketStream(webSocket, earlyDataHeader) {
 
 function processVlessHeader(vlessBuffer, userID) {
     if (vlessBuffer.byteLength < 24) return { hasError: true };
-
-    const view = new DataView(vlessBuffer);
     const version = vlessBuffer.slice(0, 1);
     const isValidUser = stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID;
     if (!isValidUser) return { hasError: true };
-
-    const optLength = view.getUint8(17);
-    const command = view.getUint8(18 + optLength);
+    const optLength = new DataView(vlessBuffer.slice(17, 18)).getUint8(0);
+    const command = new DataView(vlessBuffer.slice(18 + optLength, 18 + optLength + 1)).getUint8(0);
     if (![1, 2].includes(command)) return { hasError: true };
-
     const isUDP = command === 2;
-    const portRemote = view.getUint16(18 + optLength + 1);
-    const addressIndex = 18 + optLength + 3;
-    const addressType = view.getUint8(addressIndex - 1);
+    const portIndex = 18 + optLength + 1;
+    const portRemote = new DataView(vlessBuffer.slice(portIndex, portIndex + 2)).getUint16(0);
+    const addressIndex = portIndex + 2;
+    const addressType = new DataView(vlessBuffer.slice(addressIndex, addressIndex + 1)).getUint8(0);
     let addressLength = 0;
-    let addressValueIndex = addressIndex;
+    let addressValueIndex = addressIndex + 1;
     let addressValue = '';
 
     switch (addressType) {
@@ -150,13 +147,13 @@ function processVlessHeader(vlessBuffer, userID) {
             addressValue = Array.from(new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength))).join('.');
             break;
         case 2:
-            addressLength = view.getUint8(addressValueIndex);
+            addressLength = new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)).getUint8(0);
             addressValueIndex += 1;
             addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
             break;
         case 3:
             addressLength = 16;
-            addressValue = Array.from({ length: 8 }, (_, i) => view.getUint16(addressValueIndex + i * 2).toString(16)).join(':');
+            addressValue = Array.from({ length: 8 }, (_, i) => new DataView(vlessBuffer.slice(addressValueIndex + i * 2, addressValueIndex + (i + 1) * 2)).getUint16(0).toString(16)).join(':');
             break;
         default:
             return { hasError: true };
@@ -201,7 +198,6 @@ async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHead
 
 function base64ToArrayBuffer(base64Str) {
     if (!base64Str) return { error: null };
-
     try {
         base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
         const binaryString = atob(base64Str);
@@ -233,7 +229,6 @@ function stringify(arr) {
 
 async function handleUDPOutbound(webSocket, vlessResponseHeader) {
     let isHeaderSent = false;
-
     const transformStream = new TransformStream({
         transform(chunk, controller) {
             let index = 0;
