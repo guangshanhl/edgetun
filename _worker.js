@@ -24,7 +24,10 @@ async function handleNonWebSocketRequest(request, userID) {
     if (url.pathname === `/${userID}`) {
         return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
             status: 200,
-            headers: { "Content-Type": "text/plain;charset=utf-8" }
+            headers: {
+                "Content-Type": "text/plain;charset=utf-8",
+                "Alt-Svc": 'h3=":443"; ma=86400'
+            }
         });
     }
     url.hostname = 'bing.com';
