@@ -40,6 +40,7 @@ async function handleWebSocket(request, userID, proxyIP) {
     let remoteSocket = { value: null };
     let udpStreamWrite = null;
     let isDns = false;
+
     readableStream.pipeTo(new WritableStream({
         async write(chunk) {
             if (isDns && udpStreamWrite) {
@@ -54,11 +55,13 @@ async function handleWebSocket(request, userID, proxyIP) {
             }
             const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             if (hasError) return;
+
             if (isUDP && portRemote === 53) {
                 isDns = true;
             } else if (isUDP) {
                 return;
             }
+
             const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
             const rawClientData = chunk.slice(rawDataIndex);
             if (isDns) {
@@ -70,6 +73,7 @@ async function handleWebSocket(request, userID, proxyIP) {
             }
         },
     }));
+
     return new Response(null, { status: 101, webSocket: client });
 }
 
@@ -82,11 +86,13 @@ async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawCl
         writer.releaseLock();
         return quicSocket;
     };
+
     const retry = async () => {
         const quicSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
         quicSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
         forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, null);
     };
+
     const quicSocket = await connectAndWrite(addressRemote, portRemote);
     forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, retry);
 }
@@ -103,6 +109,7 @@ function createReadableWebSocketStream(webSocket, earlyDataHeader) {
             webSocket.addEventListener('message', handleMessage);
             webSocket.addEventListener('close', () => controller.close());
             webSocket.addEventListener('error', err => controller.error(err));
+
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
             if (error) {
                 controller.error(error);
@@ -119,38 +126,44 @@ function createReadableWebSocketStream(webSocket, earlyDataHeader) {
 
 function processVlessHeader(vlessBuffer, userID) {
     if (vlessBuffer.byteLength < 24) return { hasError: true };
+
+    const view = new DataView(vlessBuffer);
     const version = vlessBuffer.slice(0, 1);
     const isValidUser = stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID;
     if (!isValidUser) return { hasError: true };
-    const optLength = new DataView(vlessBuffer.slice(17, 18)).getUint8(0);
-    const command = new DataView(vlessBuffer.slice(18 + optLength, 18 + optLength + 1)).getUint8(0);
+
+    const optLength = view.getUint8(17);
+    const command = view.getUint8(18 + optLength);
     if (![1, 2].includes(command)) return { hasError: true };
+
     const isUDP = command === 2;
-    const portIndex = 18 + optLength + 1;
-    const portRemote = new DataView(vlessBuffer.slice(portIndex, portIndex + 2)).getUint16(0);
-    const addressIndex = portIndex + 2;
-    const addressType = new DataView(vlessBuffer.slice(addressIndex, addressIndex + 1)).getUint8(0);
+    const portRemote = view.getUint16(18 + optLength + 1);
+    const addressIndex = 18 + optLength + 3;
+    const addressType = view.getUint8(addressIndex - 1);
     let addressLength = 0;
-    let addressValueIndex = addressIndex + 1;
+    let addressValueIndex = addressIndex;
     let addressValue = '';
+
     switch (addressType) {
         case 1:
             addressLength = 4;
             addressValue = Array.from(new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength))).join('.');
             break;
         case 2:
-            addressLength = new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)).getUint8(0);
+            addressLength = view.getUint8(addressValueIndex);
             addressValueIndex += 1;
             addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
             break;
         case 3:
             addressLength = 16;
-            addressValue = Array.from({ length: 8 }, (_, i) => new DataView(vlessBuffer.slice(addressValueIndex + i * 2, addressValueIndex + (i + 1) * 2)).getUint16(0).toString(16)).join(':');
+            addressValue = Array.from({ length: 8 }, (_, i) => view.getUint16(addressValueIndex + i * 2).toString(16)).join(':');
             break;
         default:
             return { hasError: true };
     }
+
     if (!addressValue) return { hasError: true };
+
     return {
         hasError: false,
         addressRemote: addressValue,
@@ -163,11 +176,13 @@ function processVlessHeader(vlessBuffer, userID) {
 
 async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHeader, retry) {
     let hasIncomingData = false;
+
     try {
         await remoteSocket.readable.pipeTo(new WritableStream({
             async write(chunk) {
                 hasIncomingData = true;
-                if (webSocket.readyState !== WebSocket.OPEN) throw new Error('WebSocket is not open');                
+                if (webSocket.readyState !== WebSocket.OPEN) throw new Error('WebSocket is not open');
+                
                 if (vlessResponseHeader) {
                     const combinedData = new Uint8Array([...vlessResponseHeader, ...new Uint8Array(chunk)]);
                     webSocket.send(combinedData.buffer);
@@ -180,11 +195,13 @@ async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHead
     } catch {
         closeWebSocketSafely(webSocket);
     }
+
     if (!hasIncomingData && retry) retry();
 }
 
 function base64ToArrayBuffer(base64Str) {
     if (!base64Str) return { error: null };
+
     try {
         base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
         const binaryString = atob(base64Str);
@@ -216,6 +233,7 @@ function stringify(arr) {
 
 async function handleUDPOutbound(webSocket, vlessResponseHeader) {
     let isHeaderSent = false;
+
     const transformStream = new TransformStream({
         transform(chunk, controller) {
             let index = 0;
@@ -226,6 +244,7 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader) {
             }
         }
     });
+
     const dnsFetch = async (chunk) => {
         const response = await fetch('https://cloudflare-dns.com/dns-query', {
             method: 'POST',
@@ -234,6 +253,7 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader) {
         });
         return response.arrayBuffer();
     };
+
     transformStream.readable.pipeTo(new WritableStream({
         async write(chunk) {
             const dnsResult = await dnsFetch(chunk);
@@ -245,6 +265,7 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader) {
             }
         }
     }));
+
     const writer = transformStream.writable.getWriter();
     await writer.write(chunk);
 }
