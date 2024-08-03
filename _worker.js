@@ -77,64 +77,22 @@ async function handleWebSocket(request, userID, proxyIP) {
     return new Response(null, { status: 101, webSocket: client });
 }
 
-const quicConnectionCache = new Map();
 async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP) {
-    const cacheKey = `${addressRemote}:${portRemote}`;
-    let quicSocket = quicConnectionCache.get(cacheKey);
-    if (quicSocket) {
-        try {
-            await sendDataToSocket(quicSocket, rawClientData);
-            await forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, retryConnection);
-        } catch (error) {
-            quicConnectionCache.delete(cacheKey);
-            closeWebSocketSafely(webSocket);
-            retryConnection();
-        }
-    } else {
-        try {
-            quicSocket = await connectAndWrite(addressRemote, portRemote);
-            quicConnectionCache.set(cacheKey, quicSocket);
-            quicSocket.closed
-                .then(() => quicConnectionCache.delete(cacheKey))
-                .catch(() => quicConnectionCache.delete(cacheKey))
-                .finally(() => closeWebSocketSafely(webSocket));
-
-            await forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, retryConnection);
-        } catch (error) {
-            console.error('Error connecting to QUIC server:', error);
-            retryConnection();
-        }
-    }
-    async function retryConnection() {
-        try {
-            quicSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
-            quicConnectionCache.set(cacheKey, quicSocket);
-            quicSocket.closed
-                .then(() => quicConnectionCache.delete(cacheKey))
-                .catch(() => quicConnectionCache.delete(cacheKey))
-                .finally(() => closeWebSocketSafely(webSocket));
-            await forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader);
-        } catch (error) {
-            console.error('Retry connection failed:', error);
-            closeWebSocketSafely(webSocket);
-        }
-    }
-}
-
-async function connectAndWrite(address, port) {
-    const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
-    await sendDataToSocket(quicSocket, rawClientData);
-    return quicSocket;
-}
-
-async function sendDataToSocket(socket, data) {
-    try {
-        const writer = socket.writable.getWriter();
-        await writer.write(data);
+    const connectAndWrite = async (address, port) => {
+        const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
+        remoteSocket.value = quicSocket;
+        const writer = quicSocket.writable.getWriter();
+        await writer.write(rawClientData);
         writer.releaseLock();
-    } catch (error) {
-        socket.close();
-    }
+        return quicSocket;
+    };
+    const retry = async () => {
+        const quicSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
+        quicSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
+        forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, null);
+    };
+    const quicSocket = await connectAndWrite(addressRemote, portRemote);
+    forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, retry);
 }
 
 function createReadableWebSocketStream(webSocket, earlyDataHeader) {
@@ -261,31 +219,10 @@ function stringify(arr) {
         .toLowerCase();
 }
 
-const dnsCache = new Map();
-async function dnsFetch(chunk) {
-    const cacheKey = arrayBufferToString(chunk);
-    if (dnsCache.has(cacheKey)) {
-        return dnsCache.get(cacheKey);
-    }
-    const response = await fetch('https://cloudflare-dns.com/dns-query', {
-        method: 'POST',
-        headers: { 'content-type': 'application/dns-message' },
-        body: chunk
-    });
-    const dnsResult = await response.arrayBuffer();
-    dnsCache.set(cacheKey, dnsResult);   
-    return dnsResult;
-}
-
-function arrayBufferToString(buffer) {
-    const uint8Array = new Uint8Array(buffer);
-    return String.fromCharCode(...uint8Array);
-}
-
 async function handleUDPOutbound(webSocket, vlessResponseHeader) {
     let isHeaderSent = false;
     const transformStream = new TransformStream({
-        async transform(chunk, controller) {
+        transform(chunk, controller) {
             let index = 0;
             while (index < chunk.byteLength) {
                 const udpPacketLength = new DataView(chunk.slice(index, index + 2)).getUint16(0);
@@ -294,21 +231,27 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader) {
             }
         }
     });
-    const dnsFetchStream = async (chunk) => {
-        const dnsResult = await dnsFetch(chunk);
-        const udpSizeBuffer = new Uint8Array([(dnsResult.byteLength >> 8) & 0xff, dnsResult.byteLength & 0xff]);
-        
-        if (webSocket.readyState === WebSocket.OPEN) {
-            const combinedData = new Uint8Array([...(!isHeaderSent ? vlessResponseHeader : []), ...udpSizeBuffer, ...new Uint8Array(dnsResult)]);
-            webSocket.send(combinedData.buffer);
-            isHeaderSent = true;
-        }
+    const dnsFetch = async (chunk) => {
+        const response = await fetch('https://cloudflare-dns.com/dns-query', {
+            method: 'POST',
+            headers: { 'content-type': 'application/dns-message' },
+            body: chunk
+        });
+        return response.arrayBuffer();
     };
     transformStream.readable.pipeTo(new WritableStream({
         async write(chunk) {
-            await dnsFetchStream(chunk);
+            const dnsResult = await dnsFetch(chunk);
+            const udpSizeBuffer = new Uint8Array([(dnsResult.byteLength >> 8) & 0xff, dnsResult.byteLength & 0xff]);
+            if (webSocket.readyState === WebSocket.OPEN) {
+                const combinedData = new Uint8Array([...(!isHeaderSent ? vlessResponseHeader : []), ...udpSizeBuffer, ...new Uint8Array(dnsResult)]);
+                webSocket.send(combinedData.buffer);
+                isHeaderSent = true;
+            }
         }
     }));
+    const writer = transformStream.writable.getWriter();
+    await writer.write(chunk);
 }
 
 function getVLESSConfig(userID, hostName) {
