@@ -32,7 +32,7 @@ async function handleNonWebSocketRequest(request, userID) {
             }
         });
     }
-    url.hostname = 'bing.com';
+    url.hostname = 'cn.bing.com';
     url.protocol = 'https:';
     return fetch(new Request(url, request));
 }
