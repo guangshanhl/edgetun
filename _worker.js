@@ -77,32 +77,54 @@ async function handleWebSocket(request, userID, proxyIP) {
     return new Response(null, { status: 101, webSocket: client });
 }
 
+const quicConnectionCache = new Map();
 async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP) {
-    const connectAndWrite = async (address, port) => {
+    const cacheKey = `${addressRemote}:${portRemote}`;
+    let quicSocket = quicConnectionCache.get(cacheKey);
+    if (quicSocket) {
         try {
-            const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
-            remoteSocket.value = quicSocket;
             await sendDataToSocket(quicSocket, rawClientData);
-            return quicSocket;
+            await forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, retryConnection);
         } catch (error) {
-            throw error;
+            quicConnectionCache.delete(cacheKey);
+            closeWebSocketSafely(webSocket);
+            retryConnection();
         }
-    };
-    const retryConnection = async () => {
+    } else {
         try {
-            const quicSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
-            quicSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
+            quicSocket = await connectAndWrite(addressRemote, portRemote);
+            quicConnectionCache.set(cacheKey, quicSocket);
+            quicSocket.closed
+                .then(() => quicConnectionCache.delete(cacheKey))
+                .catch(() => quicConnectionCache.delete(cacheKey))
+                .finally(() => closeWebSocketSafely(webSocket));
+
+            await forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, retryConnection);
+        } catch (error) {
+            console.error('Error connecting to QUIC server:', error);
+            retryConnection();
+        }
+    }
+    async function retryConnection() {
+        try {
+            quicSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
+            quicConnectionCache.set(cacheKey, quicSocket);
+            quicSocket.closed
+                .then(() => quicConnectionCache.delete(cacheKey))
+                .catch(() => quicConnectionCache.delete(cacheKey))
+                .finally(() => closeWebSocketSafely(webSocket));
             await forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader);
         } catch (error) {
+            console.error('Retry connection failed:', error);
             closeWebSocketSafely(webSocket);
         }
-    };
-    try {
-        const quicSocket = await connectAndWrite(addressRemote, portRemote);
-        await forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, retryConnection);
-    } catch (error) {
-        retryConnection();
     }
+}
+
+async function connectAndWrite(address, port) {
+    const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
+    await sendDataToSocket(quicSocket, rawClientData);
+    return quicSocket;
 }
 
 async function sendDataToSocket(socket, data) {
