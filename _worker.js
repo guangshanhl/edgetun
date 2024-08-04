@@ -77,8 +77,7 @@ function createReadableWebSocketStream(webSocket, earlyDataHeader) {
             webSocket.addEventListener('close', () => controller.close());
             webSocket.addEventListener('error', err => controller.error(err));
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-            if (error) controller.error(error);
-            else if (earlyData) controller.enqueue(earlyData);
+            if (error) controller.error(error); else if (earlyData) controller.enqueue(earlyData);
         },
         cancel() {
             isCancelled = true;
@@ -135,7 +134,7 @@ function base64ToArrayBuffer(base64Str) {
 }
 function closeWebSocketSafely(socket) {
     if ([WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
-        try { socket.close(); } catch (error) { }
+        try { socket.close(); } catch (error) {}
     }
 }
 const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
