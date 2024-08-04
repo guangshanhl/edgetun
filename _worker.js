@@ -5,7 +5,8 @@ export default {
             const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
             const proxyIP = env.PROXYIP || '';
             return request.headers.get('Upgrade') === 'websocket'
-                ? handleWebSocket(request, userID, proxyIP) : handleNonWebSocketRequest(request, userID);
+                ? handleWebSocket(request, userID, proxyIP)
+                : handleNonWebSocketRequest(request, userID);
         } catch (err) {
             return new Response(err.toString());
         }
@@ -144,7 +145,6 @@ async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHead
         }
     }
 }
-
 function base64ToUint8Array(base64Str) {
     if (!base64Str) return { error: null };
     try {
