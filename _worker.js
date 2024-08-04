@@ -5,10 +5,9 @@ export default {
         try {
             const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
             const proxyIP = env.PROXYIP || '';
-            if (request.headers.get('Upgrade') === 'websocket') {
-                return handleWebSocket(request, userID, proxyIP);
-            }
-            return handleNonWebSocketRequest(request, userID);
+            return request.headers.get('Upgrade') === 'websocket'
+                ? handleWebSocket(request, userID, proxyIP)
+                : handleNonWebSocketRequest(request, userID);
         } catch (err) {
             return new Response(err.toString());
         }
@@ -178,13 +177,8 @@ async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHead
 function base64ToArrayBuffer(base64Str) {
     if (!base64Str) return { error: null };
     try {
-        base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
-        const binaryString = atob(base64Str);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        return { earlyData: bytes.buffer, error: null };
+        const binaryString = atob(base64Str.replace(/-/g, '+').replace(/_/g, '/'));
+        return { earlyData: new Uint8Array([...binaryString].map(char => char.charCodeAt(0))).buffer, error: null };
     } catch (error) {
         return { error };
     }
@@ -192,9 +186,7 @@ function base64ToArrayBuffer(base64Str) {
 
 function closeWebSocketSafely(socket) {
     if ([WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
-        try {
-            socket.close();
-        } catch (error) { }
+        try { socket.close(); } catch (error) { }
     }
 }
 
