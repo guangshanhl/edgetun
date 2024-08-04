@@ -87,11 +87,8 @@ function createReadableWebSocketStream(webSocket, earlyDataHeader) {
             webSocket.addEventListener('close', () => controller.close());
             webSocket.addEventListener('error', err => controller.error(err));
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-            if (error) {
-                controller.error(error);
-            } else if (earlyData) {
-                controller.enqueue(earlyData);
-            }
+            if (error) controller.error(error);
+            else if (earlyData) controller.enqueue(earlyData);
         },
         cancel() {
             isCancelled = true;
@@ -151,13 +148,8 @@ async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHead
             async write(chunk) {
                 hasIncomingData = true;
                 if (webSocket.readyState !== WebSocket.OPEN) throw new Error('WebSocket is not open');
-                if (vlessResponseHeader) {
-                    const combinedData = new Uint8Array([...vlessResponseHeader, ...new Uint8Array(chunk)]);
-                    webSocket.send(combinedData.buffer);
-                    vlessResponseHeader = null;
-                } else {
-                    webSocket.send(chunk);
-                }
+                webSocket.send(vlessResponseHeader ? new Uint8Array([...vlessResponseHeader, ...new Uint8Array(chunk)]).buffer : chunk);
+                vlessResponseHeader = null;
             }
         }));
     } catch {
