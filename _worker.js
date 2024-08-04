@@ -5,8 +5,7 @@ export default {
             const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
             const proxyIP = env.PROXYIP || '';
             return request.headers.get('Upgrade') === 'websocket'
-                ? handleWebSocket(request, userID, proxyIP)
-                : handleNonWebSocketRequest(request, userID);
+                ? handleWebSocket(request, userID, proxyIP) : handleNonWebSocketRequest(request, userID);
         } catch (err) {
             return new Response(err.toString());
         }
@@ -20,10 +19,7 @@ async function handleNonWebSocketRequest(request, userID) {
         case `/${userID}`:
             return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
                 status: 200,
-                headers: {
-                    "Content-Type": "text/plain;charset=utf-8",
-                    "Alt-Svc": 'h3=":443"; ma=86400'
-                }
+                headers: { "Content-Type": "text/plain;charset=utf-8", "Alt-Svc": 'h3=":443"; ma=86400' }
             });
         default:
             url.hostname = 'cn.bing.com';
@@ -70,7 +66,7 @@ async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawCl
     forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, async () => {
         const fallbackSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
         fallbackSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
-        forwardDataToWebSocket(fallbackSocket, webSocket, vlessResponseHeader, null);
+        forwardDataToWebSocket(fallbackSocket, webSocket, vlessResponseHeader);
     });
 }
 function createReadableWebSocketStream(webSocket, earlyDataHeader) {
