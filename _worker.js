@@ -194,6 +194,6 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData) 
 }
 function getVLESSConfig(userID, hostName) {
     return `
-vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&alpn=h3&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}
+vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}
 `;
 }
