@@ -5,8 +5,7 @@ export default {
         try {
             const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
             const proxyIP = env.PROXYIP || '';
-            const upgradeHeader = request.headers.get('Upgrade');
-            if (upgradeHeader === 'websocket') {
+            if (request.headers.get('Upgrade') === 'websocket') {
                 return handleWebSocket(request, userID, proxyIP);
             }
             return handleNonWebSocketRequest(request, userID);
@@ -45,10 +44,7 @@ async function handleWebSocket(request, userID, proxyIP) {
     let isDns = false;
     readableStream.pipeTo(new WritableStream({
         async write(chunk) {
-            if (isDns && udpStreamWrite) {
-                udpStreamWrite(chunk);
-                return;
-            }
+            if (isDns && udpStreamWrite) return udpStreamWrite(chunk);
             if (remoteSocket.value) {
                 const writer = remoteSocket.value.writable.getWriter();
                 await writer.write(chunk);
@@ -58,11 +54,9 @@ async function handleWebSocket(request, userID, proxyIP) {
             const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             if (hasError) return;
 
-            if (isUDP && portRemote === 53) {
-                isDns = true;
-            } else if (isUDP) {
-                return;
-            }
+            if (isUDP && portRemote === 53) isDns = true;
+            if (isUDP) return;
+
             const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
             const rawClientData = chunk.slice(rawDataIndex);
             if (isDns) {
@@ -98,15 +92,9 @@ function createReadableWebSocketStream(webSocket, earlyDataHeader) {
     let isCancelled = false;
     return new ReadableStream({
         start(controller) {
-            const handleMessage = event => {
-                if (!isCancelled) {
-                    controller.enqueue(event.data);
-                }
-            };
-            webSocket.addEventListener('message', handleMessage);
+            webSocket.addEventListener('message', event => !isCancelled && controller.enqueue(event.data));
             webSocket.addEventListener('close', () => controller.close());
             webSocket.addEventListener('error', err => controller.error(err));
-
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
             if (error) {
                 controller.error(error);
@@ -171,7 +159,7 @@ async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHead
         await remoteSocket.readable.pipeTo(new WritableStream({
             async write(chunk) {
                 hasIncomingData = true;
-                if (webSocket.readyState !== WebSocket.OPEN) throw new Error('WebSocket is not open');         
+                if (webSocket.readyState !== WebSocket.OPEN) throw new Error('WebSocket is not open');
                 if (vlessResponseHeader) {
                     const combinedData = new Uint8Array([...vlessResponseHeader, ...new Uint8Array(chunk)]);
                     webSocket.send(combinedData.buffer);
@@ -192,9 +180,8 @@ function base64ToArrayBuffer(base64Str) {
     try {
         base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
         const binaryString = atob(base64Str);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
             bytes[i] = binaryString.charCodeAt(i);
         }
         return { earlyData: bytes.buffer, error: null };
@@ -255,10 +242,6 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader) {
 
 function getVLESSConfig(userID, hostName) {
     return `
-################################################################
----------------------------------------------------------------
 vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&alpn=h3&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}
----------------------------------------------------------------
-################################################################
 `;
 }
