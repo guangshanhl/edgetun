@@ -14,21 +14,22 @@ export default {
 };
 async function handleNonWebSocketRequest(request, userID) {
     const url = new URL(request.url);
-    if (url.pathname === '/') {
-        return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
+    switch (url.pathname) {
+        case '/':
+            return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
+        case `/${userID}`:
+            return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
+                status: 200,
+                headers: {
+                    "Content-Type": "text/plain;charset=utf-8",
+                    "Alt-Svc": 'h3=":443"; ma=86400'
+                }
+            });
+        default:
+            url.hostname = 'cn.bing.com';
+            url.protocol = 'https:';
+            return fetch(new Request(url, request));
     }
-    if (url.pathname === `/${userID}`) {
-        return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
-            status: 200,
-            headers: {
-                "Content-Type": "text/plain;charset=utf-8",
-                "Alt-Svc": 'h3=":443"; ma=86400'
-            }
-        });
-    }
-    url.hostname = 'cn.bing.com';
-    url.protocol = 'https:';
-    return fetch(new Request(url, request));
 }
 async function handleWebSocket(request, userID, proxyIP) {
     const [client, webSocket] = new WebSocketPair();
