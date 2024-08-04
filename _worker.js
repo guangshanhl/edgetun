@@ -19,7 +19,11 @@ async function handleNonWebSocketRequest(request, userID) {
         case `/${userID}`:
             return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
                 status: 200,
-                headers: { "Content-Type": "text/plain;charset=utf-8", "Alt-Svc": 'h3=":443"; ma=86400' }
+                headers: {
+                    "Content-Type": "text/plain;charset=utf-8",
+                    "Alt-Svc": 'h3=":443"; ma=86400',
+                    "Link": '<//example.com>; rel=dns-prefetch, <//anotherdomain.com>; rel=dns-prefetch'
+                }
             });
         default:
             url.hostname = 'cn.bing.com';
