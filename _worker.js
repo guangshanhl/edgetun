@@ -128,11 +128,11 @@ function base64ToArrayBuffer(base64Str) {
     try {
         const binaryString = atob(base64Str.replace(/-/g, '+').replace(/_/g, '/'));
         return { earlyData: new Uint8Array([...binaryString].map(char => char.charCodeAt(0))).buffer, error: null };
-    } catch ()
+    } catch {}
 }
 function closeWebSocketSafely(socket) {
     if ([WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
-        try { socket.close(); } catch ()
+        try { socket.close(); } catch {}
     }
 }
 const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
