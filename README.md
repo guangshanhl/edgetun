@@ -1,1 +1,1 @@
-# 闲来无趣，蹦个怡迪
+It doesn't hurt to write, write, draw, draw
