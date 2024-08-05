@@ -93,9 +93,9 @@ function processVlessHeader(buffer, userID) {
     const portRemote = view.getUint16(18 + optLength + 1);
     const addressIndex = 18 + optLength + 3;
     const addressType = view.getUint8(addressIndex);    
-    let addressValue, addressValueIndex;
     const addressLength = addressType === 2 ? view.getUint8(addressIndex + 1) : (addressType === 1 ? 4 : 16);
-    addressValueIndex = addressIndex + (addressType === 2 ? 2 : 1);
+    const addressValueIndex = addressIndex + (addressType === 2 ? 2 : 1);
+    let addressValue;
     if (addressType === 1) {
         addressValue = Array.from(new Uint8Array(buffer, addressValueIndex, 4)).join('.');
     } else if (addressType === 2) {
