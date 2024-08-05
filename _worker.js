@@ -43,11 +43,14 @@ async function handleWebSocket(request, userID, proxyIP) {
             }
             const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             if (hasError) return;
-            if (isUDP && portRemote === 53) isDns = true;
-            if (isUDP) return;
+            if (isUDP) {
+                if (portRemote === 53) isDns = true;
+                return;
+            }
             const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
             const rawClientData = chunk.slice(rawDataIndex);
-            isDns ? await handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData)
+            isDns 
+                ? await handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData)
                 : handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
         }
     }));
