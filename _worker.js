@@ -43,14 +43,11 @@ async function handleWebSocket(request, userID, proxyIP) {
             }
             const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             if (hasError) return;
-            if (isUDP) {
-                if (portRemote === 53) isDns = true;
-                return;
-            }
+            if (isUDP && portRemote === 53) isDns = true;
+            if (isUDP) return;
             const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
             const rawClientData = chunk.slice(rawDataIndex);
-            isDns 
-                ? await handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData)
+            isDns ? await handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData)
                 : handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
         }
     }));
@@ -80,7 +77,8 @@ function createReadableWebSocketStream(webSocket, earlyDataHeader) {
             webSocket.addEventListener('close', () => controller.close());
             webSocket.addEventListener('error', err => controller.error(err));
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-            if (error) controller.error(error); else if (earlyData) controller.enqueue(earlyData);
+            if (error) controller.error(error);
+            else if (earlyData) controller.enqueue(earlyData);
         },
         cancel() {
             isCancelled = true;
@@ -96,9 +94,9 @@ function processVlessHeader(buffer, userID) {
     const portRemote = view.getUint16(18 + optLength + 1);
     const addressIndex = 18 + optLength + 3;
     const addressType = view.getUint8(addressIndex);    
+    let addressValue, addressValueIndex;
     const addressLength = addressType === 2 ? view.getUint8(addressIndex + 1) : (addressType === 1 ? 4 : 16);
-    const addressValueIndex = addressIndex + (addressType === 2 ? 2 : 1);
-    let addressValue;
+    addressValueIndex = addressIndex + (addressType === 2 ? 2 : 1);
     if (addressType === 1) {
         addressValue = Array.from(new Uint8Array(buffer, addressValueIndex, 4)).join('.');
     } else if (addressType === 2) {
@@ -131,11 +129,13 @@ function base64ToArrayBuffer(base64Str) {
     try {
         const binaryString = atob(base64Str.replace(/-/g, '+').replace(/_/g, '/'));
         return { earlyData: new Uint8Array([...binaryString].map(char => char.charCodeAt(0))).buffer, error: null };
-    } catch {}
+    } catch (error) {
+        return { error };
+    }
 }
 function closeWebSocketSafely(socket) {
     if ([WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
-        try { socket.close(); } catch {}
+        try { socket.close(); } catch (error) { }
     }
 }
 const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
