@@ -13,38 +13,32 @@ export default {
 };
 async function handleNonWebSocketRequest(request, userID) {
     const url = new URL(request.url);
-    switch (url.pathname) {
-        case '/':
-            return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
-        case `/${userID}`:
-            return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
-                status: 200,
-                headers: { "Content-Type": "text/plain;charset=utf-8", "Alt-Svc": 'h3=":443"; ma=86400' }
-            });
-        default:
-            url.hostname = 'cn.bing.com';
-            url.protocol = 'https:';
-            return fetch(new Request(url, request));
-    }
+    const headers = { "Content-Type": "text/plain;charset=utf-8", "Alt-Svc": 'h3=":443"; ma=86400' };    
+    if (url.pathname === '/') {
+        return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
+    }   
+    if (url.pathname === `/${userID}`) {
+        return new Response(getVLESSConfig(userID, request.headers.get('Host')), { status: 200, headers });
+    }   
+    url.hostname = 'cn.bing.com';
+    url.protocol = 'https:';
+    return fetch(new Request(url, request));
 }
 async function handleWebSocket(request, userID, proxyIP) {
     const [client, webSocket] = new WebSocketPair();
     webSocket.accept();
     const readableStream = createReadableWebSocketStream(webSocket, request.headers.get('sec-websocket-protocol') || '');
-    let remoteSocket = { value: null }, udpStreamWrite = null, isDns = false;
+    let remoteSocket = null; let isDns = false;
     readableStream.pipeTo(new WritableStream({
         async write(chunk) {
-            if (isDns && udpStreamWrite) return udpStreamWrite(chunk);
-            if (remoteSocket.value) {
-                const writer = remoteSocket.value.writable.getWriter();
-                await writer.write(chunk);
-                writer.releaseLock();
+            if (remoteSocket) {
+                await remoteSocket.writable.getWriter().write(chunk);
                 return;
             }
             const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             if (hasError) return;
             if (isUDP) {
-                if (portRemote === 53) isDns = true;
+                isDns = (portRemote === 53);
                 return;
             }
             const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
