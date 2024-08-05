@@ -31,20 +31,17 @@ async function handleWebSocket(request, userID, proxyIP) {
     const [client, webSocket] = new WebSocketPair();
     webSocket.accept();
     const readableStream = createReadableWebSocketStream(webSocket, request.headers.get('sec-websocket-protocol') || '');
-    let remoteSocket = { value: null }, udpStreamWrite = null, isDns = false;
+    let remoteSocket = null; let isDns = false;
     readableStream.pipeTo(new WritableStream({
         async write(chunk) {
-            if (isDns && udpStreamWrite) return udpStreamWrite(chunk);
-            if (remoteSocket.value) {
-                const writer = remoteSocket.value.writable.getWriter();
-                await writer.write(chunk);
-                writer.releaseLock();
+            if (remoteSocket) {
+                await remoteSocket.writable.getWriter().write(chunk);
                 return;
             }
             const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             if (hasError) return;
             if (isUDP) {
-                if (portRemote === 53) isDns = true;
+                isDns = (portRemote === 53);
                 return;
             }
             const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
