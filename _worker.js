@@ -7,7 +7,7 @@ export default {
             return request.headers.get('Upgrade') === 'websocket'
                 ? handleWebSocket(request, userID, proxyIP) 
                 : handleNonWebSocketRequest(request, userID);
-        } catch (err) {}
+        } catch {}
     },
 };
 async function handleNonWebSocketRequest(request, userID) {
@@ -135,7 +135,7 @@ function base64ToArrayBuffer(base64Str) {
 }
 function closeWebSocketSafely(socket) {
     if ([WebSocket.OPEN, WebSocket.CLOSING].includes(socket.readyState)) {
-        try { socket.close(); } catch (error) {}
+        try { socket.close(); } catch {}
     }
 }
 const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
