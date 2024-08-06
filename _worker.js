@@ -2,7 +2,7 @@ import { connect } from 'cloudflare:sockets';
 export default {
     async fetch(request, env) {
         try {
-            const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
+            const userID = env.UUID || '';
             const proxyIP = env.PROXYIP || '';           
             return request.headers.get('Upgrade') === 'websocket'
                 ? handleWebSocket(request, userID, proxyIP) 
