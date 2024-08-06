@@ -162,35 +162,46 @@ function stringify(arr) {
 }
 
 async function handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData) {
-    let isHeaderSent = false;    
-    const dnsFetch = async (chunk) => {
-        const response = await fetch('https://cloudflare-dns.com/dns-query', {
-            method: 'POST',
-            headers: { 'content-type': 'application/dns-message' },
-            body: chunk
-        });
-        return response.arrayBuffer();
-    };    
+    let isHeaderSent = false;
+    const dnsServers = [
+        'https://dns.google/dns-query',
+        'https://cloudflare-dns.com/dns-query',
+		'https://dns.quad9.net/dns-query'
+    ];
+    const dnsFetch = async (url, chunk) => {
+        const startTime = performance.now();
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'content-type': 'application/dns-message' },
+                body: chunk
+            });
+            const arrayBuffer = await response.arrayBuffer();
+            return { url, arrayBuffer, duration: performance.now() - startTime };
+        } catch (error) {}
+    };
     const transformStream = new TransformStream({
         async transform(chunk, controller) {
             let index = 0;
             while (index < chunk.byteLength) {
                 const udpPacketLength = new DataView(chunk.slice(index, index + 2)).getUint16(0);
-                const dnsResult = await dnsFetch(chunk.slice(index + 2, index + 2 + udpPacketLength));
-                const udpSizeBuffer = new Uint8Array([(dnsResult.byteLength >> 8) & 0xff, dnsResult.byteLength & 0xff]);                
+                const fetchPromises = dnsServers.map(url => dnsFetch(url, chunk.slice(index + 2, index + 2 + udpPacketLength)));
+                const results = await Promise.all(fetchPromises);
+                const bestResult = results.reduce((prev, curr) => curr.duration < prev.duration ? curr : prev);
+                const dnsResult = bestResult.arrayBuffer;
+                const udpSizeBuffer = new Uint8Array([(dnsResult.byteLength >> 8) & 0xff, dnsResult.byteLength & 0xff]);
                 if (webSocket.readyState === WebSocket.OPEN) {
                     webSocket.send(new Uint8Array([...(!isHeaderSent ? vlessResponseHeader : []), ...udpSizeBuffer, ...new Uint8Array(dnsResult)]).buffer);
                     isHeaderSent = true;
-                }                
+                }
                 index += 2 + udpPacketLength;
             }
         }
-    });   
+    });
     transformStream.readable.pipeTo(new WritableStream());
     const writer = transformStream.writable.getWriter();
     await writer.write(rawClientData);
 }
-
 function getVLESSConfig(userID, hostName) {
     return `
 vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}
