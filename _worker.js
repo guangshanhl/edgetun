@@ -3,21 +3,33 @@ import { connect } from 'cloudflare:sockets';
 export default {
     async fetch(request, env) {
         try {
-            const userID = env.UUID || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
+            const userID = validateUUID(env.UUID) || 'd342d11e-d424-4583-b36e-524ab1f0afa4';
             const proxyIP = env.PROXYIP || '';           
             return request.headers.get('Upgrade') === 'websocket'
-                ? handleWebSocket(request, userID, proxyIP) 
-                : handleNonWebSocketRequest(request, userID);
+                ? await handleWebSocket(request, userID, proxyIP) 
+                : await handleNonWebSocketRequest(request, userID);
         } catch (err) {
+            console.error('Fetch error:', err);
+            return new Response('Internal Server Error', { status: 500 });
         }
     },
 };
+
+function validateUUID(uuid) {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid) ? uuid : null;
+}
 
 async function handleNonWebSocketRequest(request, userID) {
     const url = new URL(request.url);    
     switch (url.pathname) {
         case '/':
-            return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });        
+            return new Response(JSON.stringify(request.cf, null, 4), { 
+                status: 200,
+                headers: { 
+                    "Content-Type": "application/json;charset=utf-8"
+                }
+            });        
         case `/${userID}`:
             return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
                 status: 200,
@@ -38,30 +50,33 @@ async function handleWebSocket(request, userID, proxyIP) {
     webSocket.accept();
     const readableStream = createReadableWebSocketStream(webSocket, request.headers.get('sec-websocket-protocol') || '');
     let remoteSocket = { value: null }, udpStreamWrite = null, isDns = false;
-    readableStream.pipeTo(new WritableStream({
-        async write(chunk) {
-            if (isDns && udpStreamWrite) return udpStreamWrite(chunk);
-            if (remoteSocket.value) {
-                const writer = remoteSocket.value.writable.getWriter();
-                await writer.write(chunk);
-                writer.releaseLock();
-                return;
+    try {
+        await readableStream.pipeTo(new WritableStream({
+            async write(chunk) {
+                if (isDns && udpStreamWrite) return udpStreamWrite(chunk);
+                if (remoteSocket.value) {
+                    const writer = remoteSocket.value.writable.getWriter();
+                    await writer.write(chunk);
+                    writer.releaseLock();
+                    return;
+                }
+                const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
+                if (hasError) return;
+                if (isUDP && portRemote === 53) isDns = true;
+                if (isUDP) return;
+                const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
+                const rawClientData = chunk.slice(rawDataIndex);
+                if (isDns) {
+                    udpStreamWrite = await handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData);
+                } else {
+                    await handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
+                }
             }
-            const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
-            if (hasError) return;
-            if (isUDP && portRemote === 53) isDns = true;
-            if (isUDP) return;
-            const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
-            const rawClientData = chunk.slice(rawDataIndex);
-            if (isDns) {
-                udpStreamWrite = await handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData);
-            } else {
-                handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
-            }
-        }
-    })).catch(error => {
-        console.error('Stream error:', error);
-    });
+        }));
+    } catch (error) {
+        console.error('WebSocket stream error:', error);
+        closeWebSocketSafely(webSocket);
+    }
     return new Response(null, { status: 101, webSocket: client });
 }
 
@@ -87,6 +102,7 @@ async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawCl
         const quicSocket = await connectAndWrite(addressRemote, portRemote);
         await forwardAndHandleFallback(quicSocket);
     } catch (error) {
+        console.error('QUIC outbound error:', error);
         closeWebSocketSafely(webSocket);
     }
 }
@@ -143,7 +159,8 @@ async function forwardDataToWebSocket(remoteSocket, webSocket, vlessResponseHead
                 vlessResponseHeader = null;
             }
         }));
-    } catch {
+    } catch (error) {
+        console.error('Forward data error:', error);
         closeWebSocketSafely(webSocket);
     }    
     if (!hasIncomingData && retry) retry();
