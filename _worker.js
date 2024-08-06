@@ -69,13 +69,36 @@ async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawCl
         await writer.write(rawClientData);
         writer.releaseLock();
         return quicSocket;
-    };    
-    const quicSocket = await connectAndWrite(addressRemote, portRemote);    
-    forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, async () => {
-        const fallbackSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
-        fallbackSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
-        forwardDataToWebSocket(fallbackSocket, webSocket, vlessResponseHeader);
-    });
+    };
+
+    const closeSocketSafely = (socket) => {
+        if (socket && !socket.closed) {
+            socket.close();
+        }
+    };
+
+    const handleConnection = async (address, port) => {
+        try {
+            const quicSocket = await connectAndWrite(address, port);
+            await forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader);
+            return quicSocket;
+        } catch (error) {}
+    };
+
+    let quicSocket;
+    try {
+        quicSocket = await handleConnection(addressRemote, portRemote);
+    } catch (error) {
+        try {
+            const fallbackSocket = await handleConnection(proxyIP || addressRemote, portRemote);
+            fallbackSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
+            return;
+        } catch (fallbackError) {}
+    } finally {
+        if (quicSocket && !quicSocket.closed) {
+            quicSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
+        }
+    }
 }
 
 function createReadableWebSocketStream(webSocket, earlyDataHeader) {
