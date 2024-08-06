@@ -9,7 +9,6 @@ export default {
                 ? handleWebSocket(request, userID, proxyIP) 
                 : handleNonWebSocketRequest(request, userID);
         } catch (err) {
-            return new Response(err.toString());
         }
     },
 };
