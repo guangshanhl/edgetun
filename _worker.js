@@ -26,9 +26,7 @@ async function handleNonWebSocketRequest(request, userID) {
                 }
             });        
         default:
-            url.hostname = 'cn.bing.com';
-            url.protocol = 'https:';
-            return fetch(new Request(url, request));
+            return new Response('Not found', { status: 404 });
     }
 }
 
