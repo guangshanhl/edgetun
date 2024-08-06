@@ -166,7 +166,6 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData) 
     const dnsServers = [
         'https://dns.google/dns-query',
         'https://cloudflare-dns.com/dns-query',
-	'https://dns.quad9.net/dns-query'
     ];
     const dnsFetch = async (url, chunk) => {
         const startTime = performance.now();
@@ -179,8 +178,8 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData) 
             const arrayBuffer = await response.arrayBuffer();
             return { url, arrayBuffer, duration: performance.now() - startTime };
         } catch (error) {
-            return { duration: Infinity };
-	}
+            return { url, error, duration: Infinity };
+        }
     };
     const transformStream = new TransformStream({
         async transform(chunk, controller) {
@@ -204,6 +203,7 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData) 
     const writer = transformStream.writable.getWriter();
     await writer.write(rawClientData);
 }
+
 function getVLESSConfig(userID, hostName) {
     return `
 vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}
