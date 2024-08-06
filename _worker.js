@@ -35,28 +35,33 @@ async function handleNonWebSocketRequest(request, userID) {
 
 async function handleWebSocket(request, userID, proxyIP) {
     const [client, webSocket] = new WebSocketPair();
-    webSocket.accept();    
-    const readableStream = createReadableWebSocketStream(webSocket, request.headers.get('sec-websocket-protocol') || '');    
-    let remoteSocket = { value: null }, udpStreamWrite = null, isDns = false;    
+    webSocket.accept();
+    const readableStream = createReadableWebSocketStream(webSocket, request.headers.get('sec-websocket-protocol') || '');
+    let remoteSocket = { value: null }, udpStreamWrite = null, isDns = false;
     readableStream.pipeTo(new WritableStream({
         async write(chunk) {
-            if (isDns && udpStreamWrite) return udpStreamWrite(chunk);            
+            if (isDns && udpStreamWrite) return udpStreamWrite(chunk);
             if (remoteSocket.value) {
                 const writer = remoteSocket.value.writable.getWriter();
                 await writer.write(chunk);
                 writer.releaseLock();
                 return;
-            }            
-            const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);            
+            }
+            const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             if (hasError) return;
             if (isUDP && portRemote === 53) isDns = true;
-            if (isUDP) return;            
+            if (isUDP) return;
             const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
-            const rawClientData = chunk.slice(rawDataIndex);            
-            isDns ? await handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData)
-                : handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
+            const rawClientData = chunk.slice(rawDataIndex);
+            if (isDns) {
+                udpStreamWrite = await handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData);
+            } else {
+                handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
+            }
         }
-    }));    
+    })).catch(error => {
+        console.error('Stream error:', error);
+    });
     return new Response(null, { status: 101, webSocket: client });
 }
 
