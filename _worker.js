@@ -65,16 +65,25 @@ async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawCl
         const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
         remoteSocket.value = quicSocket;
         const writer = quicSocket.writable.getWriter();
-        await writer.write(rawClientData);
-        writer.releaseLock();
+        try {
+            await writer.write(rawClientData);
+        } finally {
+            writer.releaseLock();
+        }
         return quicSocket;
-    };    
-    const quicSocket = await connectAndWrite(addressRemote, portRemote);    
-    forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader, async () => {
+    };
+    const forwardAndHandleFallback = async (quicSocket) => {
+        await forwardDataToWebSocket(quicSocket, webSocket, vlessResponseHeader);
         const fallbackSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
         fallbackSocket.closed.catch(() => {}).finally(() => closeWebSocketSafely(webSocket));
-        forwardDataToWebSocket(fallbackSocket, webSocket, vlessResponseHeader);
-    });
+        await forwardDataToWebSocket(fallbackSocket, webSocket, vlessResponseHeader);
+    };
+    try {
+        const quicSocket = await connectAndWrite(addressRemote, portRemote);
+        await forwardAndHandleFallback(quicSocket);
+    } catch (error) {
+        closeWebSocketSafely(webSocket);
+    }
 }
 
 function createReadableWebSocketStream(webSocket, earlyDataHeader) {
@@ -152,7 +161,6 @@ function closeWebSocketSafely(socket) {
 }
 
 const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
-
 function stringify(arr) {
     return Array.from(arr.slice(0, 16), byte => byteToHex[byte])
         .join('')
