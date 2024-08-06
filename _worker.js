@@ -166,7 +166,7 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData) 
     const dnsServers = [
         'https://dns.google/dns-query',
         'https://cloudflare-dns.com/dns-query',
-		'https://dns.quad9.net/dns-query'
+	'https://dns.quad9.net/dns-query'
     ];
     const dnsFetch = async (url, chunk) => {
         const startTime = performance.now();
@@ -180,6 +180,7 @@ async function handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData) 
             return { url, arrayBuffer, duration: performance.now() - startTime };
         } catch (error) {
             return { duration: Infinity };
+	}
     };
     const transformStream = new TransformStream({
         async transform(chunk, controller) {
