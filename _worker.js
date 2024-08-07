@@ -42,7 +42,11 @@ async function vlessOverWSHandler(request) {
 	let address = '';
 	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
-	let remoteSocket = { value: null }, udpStreamWrite = null, isDns = false;
+	let remoteSocketWapper = {
+		value: null,
+	};
+	let udpStreamWrite = null;
+	let isDns = false;
 	readableWebSocketStream.pipeTo(new WritableStream({
 		async write(chunk, controller) {
 			if (isDns && udpStreamWrite) {
@@ -86,8 +90,16 @@ async function vlessOverWSHandler(request) {
 			}
 			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,);
 		},
-	})).catch((err) => {});
-	return new Response(null, { status: 101, webSocket: client });
+		close() {
+		},
+		abort(reason) {
+		},
+	})).catch((err) => {
+	});
+	return new Response(null, {
+		status: 101,
+		webSocket: client,
+	});
 }
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
 	async function connectAndWrite(address, port) {
@@ -154,9 +166,14 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
 	});
 	return stream;
 }
-function processVlessHeader(vlessBuffer, userID) {
+function processVlessHeader(
+	vlessBuffer,
+	userID
+) {
 	if (vlessBuffer.byteLength < 24) {
-		return { hasError: true };
+		return {
+			hasError: true,
+		};
 	}
 	const version = new Uint8Array(vlessBuffer.slice(0, 1));
 	let isValidUser = false;
@@ -165,7 +182,9 @@ function processVlessHeader(vlessBuffer, userID) {
 		isValidUser = true;
 	}
 	if (!isValidUser) {
-		return { hasError: true };
+		return {
+			hasError: true,
+		};
 	}
 	const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
 	const command = new Uint8Array(
@@ -218,10 +237,14 @@ function processVlessHeader(vlessBuffer, userID) {
 			addressValue = ipv6.join(':');
 			break;
 		default:
-			return { hasError: true };
+			return {
+				hasError: true,
+			};
 	}
 	if (!addressValue) {
-		return { hasError: true };
+		return {
+			hasError: true,
+		};
 	}
 	return {
 		hasError: false,
@@ -257,9 +280,17 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 						webSocket.send(chunk);
 					}
 				},
+				close() {
+				},
+				abort(reason) {
+				},
 			})
 		)
 		.catch((error) => {
+			console.error(
+				`remoteSocketToWS has exception `,
+				error.stack || error
+			);
 			safeCloseWebSocket(webSocket);
 		});
 	if (hasIncomingData === false && retry) {
@@ -290,7 +321,9 @@ function safeCloseWebSocket(socket) {
 		if (socket.readyState === WS_READY_STATE_OPEN || socket.readyState === WS_READY_STATE_CLOSING) {
 			socket.close();
 		}
-	} catch (error) {}
+	} catch (error) {
+		console.error('safeCloseWebSocket error', error);
+	}
 }
 const byteToHex = [];
 for (let i = 0; i < 256; ++i) {
@@ -347,11 +380,23 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
 				}
 			}
 		}
-	})).catch((error) => {});
+	})).catch((error) => {
+	});
 	const writer = transformStream.writable.getWriter();
-	return { write(chunk) { writer.write(chunk); } };
+	return {
+		write(chunk) {
+			writer.write(chunk);
+		}
+	};
 }
 function getVLESSConfig(userID, hostName) {
-    return `
-vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}`;
+	const vlessMain = `vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}`
+	return `
+################################################################
+v2ray
+---------------------------------------------------------------
+${vlessMain}
+---------------------------------------------------------------
+################################################################
+`;
 }
