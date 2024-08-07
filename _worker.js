@@ -90,28 +90,44 @@ async function vlessOverWSHandler(request) {
 		webSocket: client,
 	});
 }
-async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
-	async function connectAndWrite(address, port) {
-		const tcpSocket = connect({
-			hostname: address,
-			port: port,
-		});
-		remoteSocket.value = tcpSocket;
-		const writer = tcpSocket.writable.getWriter();
-		await writer.write(rawClientData);
-		writer.releaseLock();
-		return tcpSocket;
-	}
-	async function retry() {
-		const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote)
-		tcpSocket.closed.catch(error => {
-		}).finally(() => {
-			safeCloseWebSocket(webSocket);
-		})
-		remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
-	}
-	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
-	remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
+async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP) {
+    async function connectAndWrite(address, port) {
+        try {
+            const tcpSocket = connect({
+                hostname: address,
+                port: port,
+            });
+            remoteSocket.value = tcpSocket;
+            const writer = tcpSocket.writable.getWriter();
+            await writer.write(rawClientData);
+            writer.releaseLock();
+            return tcpSocket;
+        } catch (error) {
+            throw error;
+        }
+    }
+    async function retry() {
+        try {
+            const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
+            tcpSocket.closed.catch(error => {
+            }).finally(() => {
+                safeCloseWebSocket(webSocket);
+            });
+            remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
+        } catch (error) {
+            safeCloseWebSocket(webSocket);
+        }
+    }
+    try {
+        const tcpSocket = await connectAndWrite(addressRemote, portRemote);
+        tcpSocket.closed.catch(error => {
+        }).finally(() => {
+            safeCloseWebSocket(webSocket);
+        });
+        remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
+    } catch (error) {
+        safeCloseWebSocket(webSocket);
+    }
 }
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
 	let readableStreamCancel = false;
