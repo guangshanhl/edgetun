@@ -260,7 +260,6 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 			})
 		)
 		.catch((error) => {
-			console.error(error.stack || error);
 			safeCloseWebSocket(webSocket);
 		});
 	if (hasIncomingData === false && retry) {
