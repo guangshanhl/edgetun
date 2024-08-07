@@ -166,85 +166,54 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
 	});
 	return stream;
 }
-function processVlessHeader(
-	vlessBuffer,
-	userID
-) {
+function processVlessHeader(vlessBuffer, userID) {
 	if (vlessBuffer.byteLength < 24) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
-	const version = new Uint8Array(vlessBuffer.slice(0, 1));
-	let isValidUser = false;
-	let isUDP = false;
-	if (stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID) {
-		isValidUser = true;
+	const version = new Uint8Array(vlessBuffer.slice(0, 1))[0];
+	const userIDBuffer = new Uint8Array(vlessBuffer.slice(1, 17));
+	const userIDValid = stringify(userIDBuffer) === userID;
+	if (!userIDValid) {
+		return { hasError: true };
 	}
-	if (!isValidUser) {
-		return {
-			hasError: true,
-		};
+	const optLength = vlessBuffer[17];
+	const command = vlessBuffer[18 + optLength];
+	let isUDP = command === 2;
+	if (command !== 1 && !isUDP) {
+		return { hasError: true };
 	}
-	const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
-	const command = new Uint8Array(
-		vlessBuffer.slice(18 + optLength, 18 + optLength + 1)
-	)[0];
-	if (command === 1) {
-	} else if (command === 2) {
-		isUDP = true;
-	} else {
-		return {
-			hasError: true,
-		};
-	}
-	const portIndex = 18 + optLength + 1;
-	const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
+	const portBuffer = vlessBuffer.slice(18 + optLength + 1, 20 + optLength);
 	const portRemote = new DataView(portBuffer).getUint16(0);
-	let addressIndex = portIndex + 2;
-	const addressBuffer = new Uint8Array(
-		vlessBuffer.slice(addressIndex, addressIndex + 1)
-	);
-	const addressType = addressBuffer[0];
-	let addressLength = 0;
-	let addressValueIndex = addressIndex + 1;
-	let addressValue = '';
+	const addressType = vlessBuffer[20 + optLength];
+	let addressLength, addressValueIndex, addressValue;
 	switch (addressType) {
 		case 1:
 			addressLength = 4;
-			addressValue = new Uint8Array(
-				vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			).join('.');
+			addressValueIndex = 21 + optLength;
+			addressValue = Array.from(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength))
+				.join('.');
 			break;
 		case 2:
-			addressLength = new Uint8Array(
-				vlessBuffer.slice(addressValueIndex, addressValueIndex + 1)
-			)[0];
-			addressValueIndex += 1;
-			addressValue = new TextDecoder().decode(
-				vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			);
+			addressLength = vlessBuffer[21 + optLength];
+			addressValueIndex = 22 + optLength;
+			addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
 			break;
 		case 3:
 			addressLength = 16;
-			const dataView = new DataView(
-				vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)
-			);
-			const ipv6 = [];
-			for (let i = 0; i < 8; i++) {
-				ipv6.push(dataView.getUint16(i * 2).toString(16));
-			}
-			addressValue = ipv6.join(':');
+			addressValueIndex = 22 + optLength;
+			addressValue = Array.from(new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)))
+				.reduce((acc, byte, i) => {
+					if (i % 2 === 0) acc.push('');
+					acc[acc.length - 1] += byte.toString(16).padStart(2, '0');
+					return acc;
+				}, [])
+				.join(':');
 			break;
 		default:
-			return {
-				hasError: true,
-			};
+			return { hasError: true };
 	}
 	if (!addressValue) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	return {
 		hasError: false,
