@@ -1,4 +1,5 @@
 import { connect } from 'cloudflare:sockets';
+import { QUIC } from '@cloudflare/quic';
 let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
 let proxyIP = '';
 if (!isValidUUID(userID)) {
@@ -322,32 +323,44 @@ function stringify(arr, offset = 0) {
 }
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     let isVlessHeaderSent = false;
-    const quicClient = new QUIC({
-        remoteAddress: "1.1.1.1",
-        remotePort: 443,
-    });
-    await quicClient.connect();
-    quicClient.on('error', (error) => {
-        console.error(error);
-    });
-    quicClient.on('data', (data) => {
-        const udpSize = data.byteLength;
-        const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
-        if (webSocket.readyState === WebSocket.OPEN) {
-            if (isVlessHeaderSent) {
-                webSocket.send(new Blob([udpSizeBuffer, data]).arrayBuffer());
-            } else {
-                webSocket.send(new Blob([vlessResponseHeader, udpSizeBuffer, data]).arrayBuffer());
-                isVlessHeaderSent = true;
-            }
-        }
-    });
-    const writer = quicClient.writable.getWriter();
-    return {
-        write(chunk) {
-            writer.write(chunk);
-        }
+    const createQuicClient = async (remoteAddress, remotePort) => {
+        const quicClient = new QUIC({ remoteAddress, remotePort });
+        await quicClient.connect();
+        return quicClient;
     };
+    const quicRequests = [
+        createQuicClient("1.1.1.1", 443),
+        createQuicClient("8.8.8.8", 443),
+        createQuicClient("9.9.9.9", 443)
+    ];
+    try {
+        const quicClients = await Promise.all(quicRequests);
+        quicClients.forEach(quicClient => {
+            quicClient.on('error', (error) => {
+                console.error(error);
+            });
+            quicClient.on('data', (data) => {
+                const udpSize = data.byteLength;
+                const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
+                if (webSocket.readyState === WebSocket.OPEN) {
+                    if (isVlessHeaderSent) {
+                        webSocket.send(new Blob([udpSizeBuffer, data]).arrayBuffer());
+                    } else {
+                        webSocket.send(new Blob([vlessResponseHeader, udpSizeBuffer, data]).arrayBuffer());
+                        isVlessHeaderSent = true;
+                    }
+                }
+            });
+        });
+        const writers = quicClients.map(quicClient => quicClient.writable.getWriter());
+        return {
+            write(chunk) {
+                writers.forEach(writer => writer.write(chunk));
+            }
+        };
+    } catch (error) {
+        return null;
+    }
 }
 function getVLESSConfig(userID, hostName) {
 	const vlessMain = `vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}`
