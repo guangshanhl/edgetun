@@ -327,6 +327,8 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
         },
         flush(controller) {}
     });
+    const blobHeader = new Blob([vlessResponseHeader]);
+    let blobToSend;
     transformStream.readable.pipeTo(new WritableStream({
         async write(chunk) {
             const queryPromises = [
@@ -343,7 +345,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
             ];
             let fastestResponse;
             let fastestTime = Infinity;
-            await Promise.race(queryPromises.map(p => 
+            await Promise.race(queryPromises.map(p =>
                 p.then(result => {
                     const time = performance.now();
                     if (time < fastestTime) {
@@ -354,13 +356,10 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
             ));
             const udpSize = fastestResponse.byteLength;
             const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
+            blobToSend = isVlessHeaderSent ? new Blob([udpSizeBuffer, fastestResponse]) : new Blob([blobHeader, udpSizeBuffer, fastestResponse]);
+            isVlessHeaderSent = true;
             if (webSocket.readyState === WebSocket.OPEN) {
-                if (isVlessHeaderSent) {
-                    webSocket.send(await new Blob([udpSizeBuffer, fastestResponse]).arrayBuffer());
-                } else {
-                    webSocket.send(await new Blob([vlessResponseHeader, udpSizeBuffer, fastestResponse]).arrayBuffer());
-                    isVlessHeaderSent = true;
-                }
+                webSocket.send(await blobToSend.arrayBuffer());
             }
         }
     })).catch((error) => {});
