@@ -2,15 +2,15 @@ import { connect } from 'cloudflare:sockets';
 export default {
     async fetch(request, env) {
         try {
-            const userID = env.UUID || '';
-            const proxyIP = env.PROXYIP || '';           
+            let userID = env.UUID || '';
+            let proxyIP = env.PROXYIP || '';           
             return request.headers.get('Upgrade') === 'websocket'
-                ? handleWebSocket(request, userID, proxyIP) 
-                : handleNonWebSocketRequest(request, userID);
+                ? handleWebSocket(request) 
+                : handleNonWebSocketRequest(request);
         } catch {}
     },
 };
-async function handleNonWebSocketRequest(request, userID) {
+async function handleNonWebSocketRequest(request) {
     const url = new URL(request.url);    
     switch (url.pathname) {
         case '/':
@@ -26,7 +26,7 @@ async function handleNonWebSocketRequest(request, userID) {
             return fetch(new Request(url, request));
     }
 }
-async function handleWebSocket(request, userID, proxyIP) {
+async function handleWebSocket(request) {
     const [client, webSocket] = new WebSocketPair();
     webSocket.accept();
     const readableStream = createReadableWebSocketStream(webSocket, request.headers.get('sec-websocket-protocol') || '');
@@ -49,13 +49,13 @@ async function handleWebSocket(request, userID, proxyIP) {
             if (isDns) {
                 udpStreamWrite = await handleUDPOutbound(webSocket, vlessResponseHeader, rawClientData);
             } else {
-                handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP);
+                handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
             }
         }
     })).catch(error => {});
     return new Response(null, { status: 101, webSocket: client });
 }
-async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP) {
+async function handleQUICOutbound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
     const connectAndWrite = async (address, port) => {
         const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
         remoteSocket.value = quicSocket;
