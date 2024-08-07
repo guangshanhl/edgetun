@@ -342,7 +342,6 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
             }
         }
     });
-
     const writer = quicClient.writable.getWriter();
     return {
         write(chunk) {
