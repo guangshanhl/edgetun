@@ -65,14 +65,12 @@ async function vlessOverWSHandler(request) {
 			} = processVlessHeader(chunk, userID);
 			address = addressRemote;
 			if (hasError) {
-				throw new Error(message);
 				return;
 			}
 			if (isUDP) {
 				if (portRemote === 53) {
 					isDns = true;
 				} else {
-					throw new Error('UDP proxy only is port 53');
 					return;
 				}
 			}
