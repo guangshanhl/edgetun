@@ -142,13 +142,26 @@ function makeReadableWebSocketStream(webSocket, earlyDataHeader) {
         }
     });
 }
-function processVlessHeader(vlessBuffer, userID) {
-	if (vlessBuffer.byteLength < 24) return { hasError: true };
+function processVlessHeader(
+	vlessBuffer,
+	userID
+) {
+	if (vlessBuffer.byteLength < 24) {
+		return {
+			hasError: true,
+		};
+	}
 	const version = new Uint8Array(vlessBuffer.slice(0, 1));
 	let isValidUser = false;
 	let isUDP = false;
-	const isValidUser = (stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID);
-	if (!isValidUser) return { hasError: true };
+	if (stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID) {
+		isValidUser = true;
+	}
+	if (!isValidUser) {
+		return {
+			hasError: true,
+		};
+	}
 	const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
 	const command = new Uint8Array(
 		vlessBuffer.slice(18 + optLength, 18 + optLength + 1)
