@@ -90,44 +90,28 @@ async function vlessOverWSHandler(request) {
 		webSocket: client,
 	});
 }
-async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, proxyIP) {
-    async function connectAndWrite(address, port) {
-        try {
-            const tcpSocket = connect({
-                hostname: address,
-                port: port,
-            });
-            remoteSocket.value = tcpSocket;
-            const writer = tcpSocket.writable.getWriter();
-            await writer.write(rawClientData);
-            writer.releaseLock();
-            return tcpSocket;
-        } catch (error) {
-            throw error;
-        }
-    }
-    async function retry() {
-        try {
-            const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
-            tcpSocket.closed.catch(error => {
-            }).finally(() => {
-                safeCloseWebSocket(webSocket);
-            });
-            remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
-        } catch (error) {
-            safeCloseWebSocket(webSocket);
-        }
-    }
-    try {
-        const tcpSocket = await connectAndWrite(addressRemote, portRemote);
-        tcpSocket.closed.catch(error => {
-        }).finally(() => {
-            safeCloseWebSocket(webSocket);
-        });
-        remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
-    } catch (error) {
-        safeCloseWebSocket(webSocket);
-    }
+async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
+	async function connectAndWrite(address, port) {
+		const tcpSocket = connect({
+			hostname: address,
+			port: port,
+		});
+		remoteSocket.value = tcpSocket;
+		const writer = tcpSocket.writable.getWriter();
+		await writer.write(rawClientData);
+		writer.releaseLock();
+		return tcpSocket;
+	}
+	async function retry() {
+		const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote)
+		tcpSocket.closed.catch(error => {
+		}).finally(() => {
+			safeCloseWebSocket(webSocket);
+		})
+		remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, null);
+	}
+	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
+	remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
 }
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
 	let readableStreamCancel = false;
@@ -343,8 +327,6 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
         },
         flush(controller) {}
     });
-    const blobHeader = new Blob([vlessResponseHeader]);
-    let blobToSend;
     transformStream.readable.pipeTo(new WritableStream({
         async write(chunk) {
             const queryPromises = [
@@ -361,7 +343,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
             ];
             let fastestResponse;
             let fastestTime = Infinity;
-            await Promise.race(queryPromises.map(p =>
+            await Promise.race(queryPromises.map(p => 
                 p.then(result => {
                     const time = performance.now();
                     if (time < fastestTime) {
@@ -372,10 +354,13 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
             ));
             const udpSize = fastestResponse.byteLength;
             const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
-            blobToSend = isVlessHeaderSent ? new Blob([udpSizeBuffer, fastestResponse]) : new Blob([blobHeader, udpSizeBuffer, fastestResponse]);
-            isVlessHeaderSent = true;
             if (webSocket.readyState === WebSocket.OPEN) {
-                webSocket.send(await blobToSend.arrayBuffer());
+                if (isVlessHeaderSent) {
+                    webSocket.send(await new Blob([udpSizeBuffer, fastestResponse]).arrayBuffer());
+                } else {
+                    webSocket.send(await new Blob([vlessResponseHeader, udpSizeBuffer, fastestResponse]).arrayBuffer());
+                    isVlessHeaderSent = true;
+                }
             }
         }
     })).catch((error) => {});
