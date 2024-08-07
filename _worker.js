@@ -37,8 +37,7 @@ export default {
 				return await vlessOverWSHandler(request);
 			}
 		} catch (err) {
-			/** @type {Error} */ let e = err;
-			return new Response(e.toString());
+			return new Response(err.toString());
 		}
 	},
 };
@@ -48,12 +47,8 @@ async function vlessOverWSHandler(request) {
 	const [client, webSocket] = Object.values(webSocketPair);
 	webSocket.accept();
 	let address = '';
-	let portWithRandomLog = '';
-	const log = (/** @type {string} */ info, /** @type {string | undefined} */ event) => {
-		console.log(`[${address}:${portWithRandomLog}] ${info}`, event || '');
-	};
 	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
-	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log);
+	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
 	let remoteSocketWapper = {
 		value: null,
 	};
@@ -80,8 +75,6 @@ async function vlessOverWSHandler(request) {
 				isUDP,
 			} = processVlessHeader(chunk, userID);
 			address = addressRemote;
-			portWithRandomLog = `${portRemote}--${Math.random()} ${isUDP ? 'udp ' : 'tcp '
-				} `;
 			if (hasError) {
 				throw new Error(message);
 				return;
@@ -97,7 +90,7 @@ async function vlessOverWSHandler(request) {
 			const vlessResponseHeader = new Uint8Array([vlessVersion[0], 0]);
 			const rawClientData = chunk.slice(rawDataIndex);
 			if (isDns) {
-				const { write } = await handleUDPOutBound(webSocket, vlessResponseHeader, log);
+				const { write } = await handleUDPOutBound(webSocket, vlessResponseHeader);
 				udpStreamWrite = write;
 				udpStreamWrite(rawClientData);
 				return;
@@ -105,13 +98,10 @@ async function vlessOverWSHandler(request) {
 			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log);
 		},
 		close() {
-			log(`readableWebSocketStream is close`);
 		},
 		abort(reason) {
-			log(`readableWebSocketStream is abort`, JSON.stringify(reason));
 		},
 	})).catch((err) => {
-		log('readableWebSocketStream pipeTo error', err);
 	});
 	return new Response(null, {
 		status: 101,
@@ -119,7 +109,7 @@ async function vlessOverWSHandler(request) {
 	});
 }
 
-async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log,) {
+async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
 	async function connectAndWrite(address, port) {
 		const tcpSocket = connect({
 			hostname: address,
