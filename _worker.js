@@ -1,5 +1,4 @@
 import { connect } from 'cloudflare:sockets';
-import { QUIC } from '@cloudflare/quic';
 let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
 let proxyIP = '';
 if (!isValidUUID(userID)) {
