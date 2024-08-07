@@ -1,13 +1,9 @@
 import { connect } from 'cloudflare:sockets';
-
 let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
-
 let proxyIP = '';
-
 if (!isValidUUID(userID)) {
 	throw new Error('uuid is not valid');
 }
-
 export default {
 	async fetch(request, env, ctx) {
 		try {
@@ -39,7 +35,6 @@ export default {
 		}
 	},
 };
-
 async function vlessOverWSHandler(request) {
 	const webSocketPair = new WebSocketPair();
 	const [client, webSocket] = Object.values(webSocketPair);
@@ -95,18 +90,9 @@ async function vlessOverWSHandler(request) {
 			}
 			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,);
 		},
-		close() {
-		},
-		abort(reason) {
-		},
-	})).catch((err) => {
-	});
-	return new Response(null, {
-		status: 101,
-		webSocket: client,
-	});
+	})).catch((err) => {});
+	return new Response(null, { status: 101, webSocket: client });
 }
-
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader,) {
 	async function connectAndWrite(address, port) {
 		const tcpSocket = connect({
@@ -130,7 +116,6 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
 	remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
 }
-
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
 	let readableStreamCancel = false;
 	const stream = new ReadableStream({
@@ -173,15 +158,9 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
 	});
 	return stream;
 }
-
-function processVlessHeader(
-	vlessBuffer,
-	userID
-) {
+function processVlessHeader(vlessBuffer, userID) {
 	if (vlessBuffer.byteLength < 24) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	const version = new Uint8Array(vlessBuffer.slice(0, 1));
 	let isValidUser = false;
@@ -190,9 +169,7 @@ function processVlessHeader(
 		isValidUser = true;
 	}
 	if (!isValidUser) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
 	const command = new Uint8Array(
@@ -245,14 +222,10 @@ function processVlessHeader(
 			addressValue = ipv6.join(':');
 			break;
 		default:
-			return {
-				hasError: true,
-			};
+			return { hasError: true };
 	}
 	if (!addressValue) {
-		return {
-			hasError: true,
-		};
+		return { hasError: true };
 	}
 	return {
 		hasError: false,
@@ -264,7 +237,6 @@ function processVlessHeader(
 		isUDP,
 	};
 }
-
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
 	let remoteChunkCount = 0;
 	let chunks = [];
@@ -289,24 +261,16 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 						webSocket.send(chunk);
 					}
 				},
-				close() {
-				},
-				abort(reason) {
-				},
 			})
 		)
 		.catch((error) => {
-			console.error(
-				`remoteSocketToWS has exception `,
-				error.stack || error
-			);
+			console.error(error.stack || error);
 			safeCloseWebSocket(webSocket);
 		});
 	if (hasIncomingData === false && retry) {
 		retry();
 	}
 }
-
 function base64ToArrayBuffer(base64Str) {
 	if (!base64Str) {
 		return { error: null };
@@ -320,25 +284,19 @@ function base64ToArrayBuffer(base64Str) {
 		return { error };
 	}
 }
-
 function isValidUUID(uuid) {
 	const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 	return uuidRegex.test(uuid);
 }
-
 const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
-
 function safeCloseWebSocket(socket) {
 	try {
 		if (socket.readyState === WS_READY_STATE_OPEN || socket.readyState === WS_READY_STATE_CLOSING) {
 			socket.close();
 		}
-	} catch (error) {
-		console.error('safeCloseWebSocket error', error);
-	}
+	} catch (error) {}
 }
-
 const byteToHex = [];
 for (let i = 0; i < 256; ++i) {
 	byteToHex.push((i + 256).toString(16).slice(1));
@@ -353,13 +311,10 @@ function stringify(arr, offset = 0) {
 	}
 	return uuid;
 }
-
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
-
 	let isVlessHeaderSent = false;
 	const transformStream = new TransformStream({
 		start(controller) {
-
 		},
 		transform(chunk, controller) {
 			for (let index = 0; index < chunk.byteLength;) {
@@ -397,21 +352,14 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
 				}
 			}
 		}
-	})).catch((error) => {
-	});
+	})).catch((error) => {});
 	const writer = transformStream.writable.getWriter();
-	return {
-		write(chunk) {
-			writer.write(chunk);
-		}
-	};
+	return { write(chunk) { writer.write(chunk); } };
 }
-
 function getVLESSConfig(userID, hostName) {
 	const vlessMain = `vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}`
 	return `
 ################################################################
-v2ray
 ---------------------------------------------------------------
 ${vlessMain}
 ---------------------------------------------------------------
