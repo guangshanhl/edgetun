@@ -264,7 +264,7 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 				},
 				async write(chunk, controller) {
 					hasIncomingData = true;
-					if (webSocket.readyState !== WS_READY_STATE_OPEN) {
+					if (webSocket.readyState !== WebSocket.OPEN) {
 						controller.error(
 							'webSocket.readyState is not open, maybe close'
 						);
@@ -309,11 +309,9 @@ function isValidUUID(uuid) {
 	const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 	return uuidRegex.test(uuid);
 }
-const WS_READY_STATE_OPEN = 1;
-const WS_READY_STATE_CLOSING = 2;
 function safeCloseWebSocket(socket) {
 	try {
-		if (socket.readyState === WS_READY_STATE_OPEN || socket.readyState === WS_READY_STATE_CLOSING) {
+		if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CLOSING) {
 			socket.close();
 		}
 	} catch (error) {
@@ -365,7 +363,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
 			const dnsQueryResult = await resp.arrayBuffer();
 			const udpSize = dnsQueryResult.byteLength;
 			const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
-			if (webSocket.readyState === WS_READY_STATE_OPEN) {
+			if (webSocket.readyState === WebSocket.OPEN) {
 				if (isVlessHeaderSent) {
 					webSocket.send(await new Blob([udpSizeBuffer, dnsQueryResult]).arrayBuffer());
 				} else {
