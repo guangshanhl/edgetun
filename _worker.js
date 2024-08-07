@@ -246,33 +246,23 @@ function processVlessHeader(
 	};
 }
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
-	let remoteChunkCount = 0;
-	let chunks = [];
-	let vlessHeader = vlessResponseHeader;
-	let hasIncomingData = false;
-	await remoteSocket.readable
-		.pipeTo(
-			new WritableStream({
-				start() {
-				},
-				async write(chunk, controller) {
-					hasIncomingData = true;
-					if (webSocket.readyState !== WebSocket.OPEN) {}
-					if (vlessHeader) {
-						webSocket.send(await new Blob([vlessHeader, chunk]).arrayBuffer());
-						vlessHeader = null;
-					} else {
-						webSocket.send(chunk);
-					}
-				},
-			})
-		)
-		.catch((error) => {
-			safeCloseWebSocket(webSocket);
-		});
-	if (hasIncomingData === false && retry) {
-		retry();
-	}
+    let vlessHeader = vlessResponseHeader;
+    let hasIncomingData = false;
+    await remoteSocket.readable.pipeTo(new WritableStream({
+        async write(chunk) {
+            hasIncomingData = true;
+            if (webSocket.readyState === WebSocket.OPEN) {
+                if (vlessHeader) {
+                    webSocket.send(await new Blob([vlessHeader, chunk]).arrayBuffer());
+                    vlessHeader = null;
+                } else {
+                    webSocket.send(chunk);
+                }
+            }
+        }
+    })).catch(() => safeCloseWebSocket(webSocket));
+
+    if (!hasIncomingData && retry) retry();
 }
 function base64ToArrayBuffer(base64Str) {
     if (!base64Str) return { error: null };
