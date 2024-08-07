@@ -5,31 +5,39 @@ if (!isValidUUID(userID)) {
 	throw new Error('uuid is not valid');
 }
 export default {
-	async fetch(request, env, ctx) {
-		try {
-			userID = env.UUID || userID;
-			proxyIP = env.PROXYIP || proxyIP;
-			const upgradeHeader = request.headers.get('Upgrade');
-			if (!upgradeHeader || upgradeHeader !== 'websocket') {
-				const url = new URL(request.url);
-				switch (url.pathname) {
-				        case '/':
-				            return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });        
-				        case `/${userID}`:
-				            return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
-				                status: 200,
-				                headers: { "Content-Type": "text/plain;charset=utf-8", "Alt-Svc": 'h3=":443"; ma=86400' }
-				            }); 
-					default:
-						return new Response('Not found', { status: 404 });
-				}
-			} else {
-				return await vlessOverWSHandler(request);
-			}
-		} catch (err) {
-			return new Response(err.toString());
-		}
-	},
+    async fetch(request, env, ctx) {
+        try {
+            userID = env.UUID || userID;
+            proxyIP = env.PROXYIP || proxyIP;
+            const upgradeHeader = request.headers.get('Upgrade');
+            if (!upgradeHeader || upgradeHeader !== 'websocket') {
+                const url = new URL(request.url);
+                switch (url.pathname) {
+                    case '/':
+                        return new Response(JSON.stringify(request.cf, null, 4), { 
+                            status: 200,
+                            headers: {
+                                "Alt-Svc": 'h3-23=":443"; ma=86400, h3-22=":443"; ma=86400, h3-21=":443"; ma=86400'
+                            }
+                        });
+                    case `/${userID}`:
+                        return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
+                            status: 200,
+                            headers: {
+                                "Content-Type": "text/plain;charset=utf-8",
+                                "Alt-Svc": 'h3-23=":443"; ma=86400, h3-22=":443"; ma=86400, h3-21=":443"; ma=86400'
+                            }
+                        });
+                    default:
+                        return new Response('Not found', { status: 404 });
+                }
+            } else {
+                return await vlessOverWSHandler(request);
+            }
+        } catch (err) {
+            return new Response(err.toString());
+        }
+    },
 };
 async function vlessOverWSHandler(request) {
 	const webSocketPair = new WebSocketPair();
@@ -314,57 +322,27 @@ function stringify(arr, offset = 0) {
 }
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     let isVlessHeaderSent = false;
-    const transformStream = new TransformStream({
-        start(controller) {},
-        transform(chunk, controller) {
-            for (let index = 0; index < chunk.byteLength;) {
-                const lengthBuffer = chunk.slice(index, index + 2);
-                const udpPacketLength = new DataView(lengthBuffer).getUint16(0);
-                const udpData = new Uint8Array(chunk.slice(index + 2, index + 2 + udpPacketLength));
-                index = index + 2 + udpPacketLength;
-                controller.enqueue(udpData);
-            }
-        },
-        flush(controller) {}
+    const quicClient = new QUIC({
+        remoteAddress: "1.1.1.1",
+        remotePort: 443,
     });
-    transformStream.readable.pipeTo(new WritableStream({
-        async write(chunk) {
-            const queryPromises = [
-                fetch('https://cloudflare-dns.com/dns-query', {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/dns-message' },
-                    body: chunk,
-                }).then(resp => resp.arrayBuffer()),
-                fetch('https://dns.google/resolve', {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/dns-message' },
-                    body: chunk,
-                }).then(resp => resp.arrayBuffer())
-            ];
-            let fastestResponse;
-            let fastestTime = Infinity;
-            await Promise.race(queryPromises.map(p => 
-                p.then(result => {
-                    const time = performance.now();
-                    if (time < fastestTime) {
-                        fastestTime = time;
-                        fastestResponse = result;
-                    }
-                })
-            ));
-            const udpSize = fastestResponse.byteLength;
-            const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
-            if (webSocket.readyState === WebSocket.OPEN) {
-                if (isVlessHeaderSent) {
-                    webSocket.send(await new Blob([udpSizeBuffer, fastestResponse]).arrayBuffer());
-                } else {
-                    webSocket.send(await new Blob([vlessResponseHeader, udpSizeBuffer, fastestResponse]).arrayBuffer());
-                    isVlessHeaderSent = true;
-                }
+    await quicClient.connect();
+    quicClient.on('error', (error) => {
+        console.error(error);
+    });
+    quicClient.on('data', (data) => {
+        const udpSize = data.byteLength;
+        const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
+        if (webSocket.readyState === WebSocket.OPEN) {
+            if (isVlessHeaderSent) {
+                webSocket.send(new Blob([udpSizeBuffer, data]).arrayBuffer());
+            } else {
+                webSocket.send(new Blob([vlessResponseHeader, udpSizeBuffer, data]).arrayBuffer());
+                isVlessHeaderSent = true;
             }
         }
-    })).catch((error) => {});
-    const writer = transformStream.writable.getWriter();
+    });
+    const writer = quicClient.writable.getWriter();
     return {
         write(chunk) {
             writer.write(chunk);
