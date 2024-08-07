@@ -42,11 +42,7 @@ async function vlessOverWSHandler(request) {
 	let address = '';
 	const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
 	const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
-	let remoteSocketWapper = {
-		value: null,
-	};
-	let udpStreamWrite = null;
-	let isDns = false;
+	let remoteSocket = { value: null }, udpStreamWrite = null, isDns = false;
 	readableWebSocketStream.pipeTo(new WritableStream({
 		async write(chunk, controller) {
 			if (isDns && udpStreamWrite) {
