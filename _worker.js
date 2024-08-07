@@ -274,10 +274,6 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
 						webSocket.send(chunk);
 					}
 				},
-				close() {
-				},
-				abort(reason) {
-				},
 			})
 		)
 		.catch((error) => {
