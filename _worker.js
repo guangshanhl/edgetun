@@ -161,40 +161,65 @@ function processVlessHeader(vlessBuffer, userID) {
     if (vlessBuffer.byteLength < 24) {
         return { hasError: true };
     }
-    const version = vlessBuffer[0];
-    const userIDBuffer = vlessBuffer.slice(1, 17);
-    if (unsafeStringify(userIDBuffer) !== userID) {
+    const version = new Uint8Array(vlessBuffer.slice(0, 1));
+    let isValidUser = false;
+    let isUDP = false;
+    if (stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID) {
+        isValidUser = true;
+    }
+    if (!isValidUser) {
         return { hasError: true };
     }
-    const optLength = vlessBuffer[17];
-    const command = vlessBuffer[18 + optLength];
-    if (command !== 1 && command !== 2) {
-        return { hasError: true };
-    }
-    const portRemote = (vlessBuffer[18 + optLength + 1] << 8) | vlessBuffer[18 + optLength + 2];
-    const addressType = vlessBuffer[18 + optLength + 3];
-    let addressValue = '';
-    const addressLength = addressType === 1 ? 4 : addressType === 2 ? vlessBuffer[18 + optLength + 4] : 16;
-    const addressStart = 18 + optLength + 4 + (addressType === 2 ? 1 : 0);
-    if (addressType === 1) {
-        addressValue = Array.from(vlessBuffer.slice(addressStart, addressStart + 4)).join('.');
-    } else if (addressType === 2) {
-        addressValue = new TextDecoder().decode(vlessBuffer.slice(addressStart, addressStart + addressLength));
+    const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
+    const command = new Uint8Array(vlessBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
+    if (command === 1) {
+    } else if (command === 2) {
+        isUDP = true;
     } else {
-        const ipv6 = [];
-        for (let i = 0; i < 8; i++) {
-            ipv6.push(((vlessBuffer[addressStart + i * 2] << 8) | vlessBuffer[addressStart + i * 2 + 1]).toString(16));
-        }
-        addressValue = ipv6.join(':');
+        return { hasError: true };
+    }
+    const portIndex = 18 + optLength + 1;
+    const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
+    const portRemote = new DataView(portBuffer).getUint16(0);
+    let addressIndex = portIndex + 2;
+    const addressBuffer = new Uint8Array(vlessBuffer.slice(addressIndex, addressIndex + 1));
+    const addressType = addressBuffer[0];
+    let addressLength = 0;
+    let addressValueIndex = addressIndex + 1;
+    let addressValue = '';
+    switch (addressType) {
+        case 1:
+            addressLength = 4;
+            addressValue = new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join('.');
+            break;
+        case 2:
+            addressLength = new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1))[0];
+            addressValueIndex += 1;
+            addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+            break;
+        case 3:
+            addressLength = 16;
+            const dataView = new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+            const ipv6 = [];
+            for (let i = 0; i < 8; i++) {
+                ipv6.push(dataView.getUint16(i * 2).toString(16));
+            }
+            addressValue = ipv6.join(':');
+            break;
+        default:
+            return { hasError: true };
+    }
+    if (!addressValue) {
+        return { hasError: true };
     }
     return {
         hasError: false,
         addressRemote: addressValue,
         addressType,
         portRemote,
-        rawDataIndex: addressStart + addressLength,
-        vlessVersion: [version],
-        isUDP: command === 2,
+        rawDataIndex: addressValueIndex + addressLength,
+        vlessVersion: version,
+        isUDP,
     };
 }
 
