@@ -113,47 +113,34 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 	const tcpSocket = await connectAndWrite(addressRemote, portRemote);
 	remoteSocketToWS(tcpSocket, webSocket, vlessResponseHeader, retry);
 }
-function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
-	let readableStreamCancel = false;
-	const stream = new ReadableStream({
-		start(controller) {
-			webSocketServer.addEventListener('message', (event) => {
-				if (readableStreamCancel) {
-					return;
-				}
-				const message = event.data;
-				controller.enqueue(message);
-			});
-			webSocketServer.addEventListener('close', () => {
-				safeCloseWebSocket(webSocketServer);
-				if (readableStreamCancel) {
-					return;
-				}
-				controller.close();
-			}
-			);
-			webSocketServer.addEventListener('error', (err) => {
-				controller.error(err);
-			}
-			);
-			const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-			if (error) {
-				controller.error(error);
-			} else if (earlyData) {
-				controller.enqueue(earlyData);
-			}
-		},
-		pull(controller) {
-		},
-		cancel(reason) {
-			if (readableStreamCancel) {
-				return;
-			}
-			readableStreamCancel = true;
-			safeCloseWebSocket(webSocketServer);
-		}
-	});
-	return stream;
+function makeReadableWebSocketStream(webSocket, earlyDataHeader) {
+    let readableStreamCancel = false;
+    return new ReadableStream({
+        start(controller) {
+            webSocket.addEventListener('message', event => {
+                if (readableStreamCancel) return;
+                controller.enqueue(event.data);
+            });
+            webSocket.addEventListener('close', () => {
+                safeCloseWebSocket(webSocket);
+                if (readableStreamCancel) return;
+                controller.close();
+            });
+            webSocket.addEventListener('error', err => controller.error(err));
+            const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
+            if (error) {
+                controller.error(error);
+            } else if (earlyData) {
+                controller.enqueue(earlyData);
+            }
+        },
+        pull() {},
+        cancel() {
+            if (readableStreamCancel) return;
+            readableStreamCancel = true;
+            safeCloseWebSocket(webSocket);
+        }
+    });
 }
 function processVlessHeader(
 	vlessBuffer,
