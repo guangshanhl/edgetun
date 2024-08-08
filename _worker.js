@@ -3,6 +3,11 @@ import { connect } from 'cloudflare:sockets';
 let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
 let proxyIP = '';
 
+function isValidUUID(uuid) {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid);
+}
+
 if (!isValidUUID(userID)) {
     throw new Error('uuid is not valid');
 }
@@ -103,12 +108,19 @@ async function vlessOverWSHandler(request) {
 
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
     const connectAndWrite = async (address, port) => {
-        const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
-        remoteSocket.value = quicSocket;
-        const writer = quicSocket.writable.getWriter();
-        await writer.write(rawClientData);
-        writer.releaseLock();
-        return quicSocket;
+        if (remoteSocket.value && !remoteSocket.value.closed) {
+            const writer = remoteSocket.value.writable.getWriter();
+            await writer.write(rawClientData);
+            writer.releaseLock();
+            return remoteSocket.value;
+        } else {
+            const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
+            remoteSocket.value = quicSocket;
+            const writer = quicSocket.writable.getWriter();
+            await writer.write(rawClientData);
+            writer.releaseLock();
+            return quicSocket;
+        }
     };
     const quicSocket = await connectAndWrite(addressRemote, portRemote);
     remoteSocketToWS(quicSocket, webSocket, vlessResponseHeader, async () => {
@@ -162,61 +174,58 @@ function processVlessHeader(vlessBuffer, userID) {
     if (vlessBuffer.byteLength < 24) {
         return { hasError: true };
     }
+
     const version = new Uint8Array(vlessBuffer.slice(0, 1));
-    let isValidUser = false;
-    let isUDP = false;
-    if (stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID) {
-        isValidUser = true;
-    }
+    const isValidUser = stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID;
+
     if (!isValidUser) {
         return { hasError: true };
     }
+
     const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
     const command = new Uint8Array(vlessBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
-    if (command === 1) {
-    } else if (command === 2) {
-        isUDP = true;
-    } else {
+    let isUDP = (command === 2);
+    let portRemote = 443;
+    let addressRemote = '';
+    let rawDataIndex = 0;
+
+    if (command !== 1 && command !== 2) {
         return { hasError: true };
     }
+
     const portIndex = 18 + optLength + 1;
     const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
-    const portRemote = new DataView(portBuffer).getUint16(0);
-    let addressIndex = portIndex + 2;
+    portRemote = new DataView(portBuffer).getUint16(0);
+
+    const addressIndex = portIndex + 2;
     const addressBuffer = new Uint8Array(vlessBuffer.slice(addressIndex, addressIndex + 1));
     const addressType = addressBuffer[0];
     let addressLength = 0;
     let addressValueIndex = addressIndex + 1;
-    let addressValue = '';
+
     switch (addressType) {
         case 1:
             addressLength = 4;
-            addressValue = new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join('.');
+            addressRemote = Array.from(new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)))
+                                  .join('.');
             break;
         case 2:
             addressLength = new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + 1))[0];
             addressValueIndex += 1;
-            addressValue = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+            addressRemote = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
             break;
         case 3:
             addressLength = 16;
             const dataView = new DataView(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
-            const ipv6 = [];
-            for (let i = 0; i < 8; i++) {
-                ipv6.push(dataView.getUint16(i * 2).toString(16));
-            }
-            addressValue = ipv6.join(':');
+            addressRemote = Array.from({ length: 8 }, (_, i) => dataView.getUint16(i * 2).toString(16)).join(':');
             break;
         default:
             return { hasError: true };
     }
-    if (!addressValue) {
-        return { hasError: true };
-    }
+
     return {
         hasError: false,
-        addressRemote: addressValue,
-        addressType,
+        addressRemote,
         portRemote,
         rawDataIndex: addressValueIndex + addressLength,
         vlessVersion: version,
@@ -225,28 +234,28 @@ function processVlessHeader(vlessBuffer, userID) {
 }
 
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
-    let remoteChunkCount = 0;
-    let chunks = [];
-    let vlessHeader = vlessResponseHeader;
     let hasIncomingData = false;
-    await remoteSocket.readable.pipeTo(
-        new WritableStream({
-            start() {},
-            async write(chunk, controller) {
+    let vlessHeader = vlessResponseHeader;
+
+    try {
+        await remoteSocket.readable.pipeTo(new WritableStream({
+            async write(chunk) {
                 hasIncomingData = true;
-                if (webSocket.readyState !== WebSocket.OPEN) {}
-                if (vlessHeader) {
-                    webSocket.send(await new Blob([vlessHeader, chunk]).arrayBuffer());
-                    vlessHeader = null;
-                } else {
-                    webSocket.send(chunk);
+                if (webSocket.readyState === WebSocket.OPEN) {
+                    if (vlessHeader) {
+                        webSocket.send(await new Blob([vlessHeader, chunk]).arrayBuffer());
+                        vlessHeader = null;
+                    } else {
+                        webSocket.send(chunk);
+                    }
                 }
-            },
-        })
-    ).catch((error) => {
+            }
+        }));
+    } catch (error) {
         safeCloseWebSocket(webSocket);
-    });
-    if (hasIncomingData === false && retry) {
+    }
+
+    if (!hasIncomingData && retry) {
         retry();
     }
 }
@@ -263,11 +272,6 @@ function base64ToArrayBuffer(base64Str) {
     } catch (error) {
         return { error };
     }
-}
-
-function isValidUUID(uuid) {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(uuid);
 }
 
 function safeCloseWebSocket(socket) {
