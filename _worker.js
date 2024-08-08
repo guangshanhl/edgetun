@@ -114,21 +114,19 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
     return stream;
 }
 function processVlessHeader(vlessBuffer, userID) {
-    if (vlessBuffer.byteLength < 24) return { hasError: true };  
+    if (vlessBuffer.byteLength < 24) return { hasError: true };
     const view = new DataView(vlessBuffer);
-    const version = vlessBuffer.slice(0, 1);    
-    if (stringify(new Uint8Array(vlessBuffer.slice(1, 17))) !== userID) return { hasError: true };    
+    const version = vlessBuffer.slice(0, 1);
+    if (stringify(new Uint8Array(vlessBuffer.slice(1, 17))) !== userID) return { hasError: true };
     const optLength = view.getUint8(17);
-    const command = view.getUint8(18 + optLength);    
-    if (command !== 1 && command !== 2) return { hasError: true };    
+    const command = view.getUint8(18 + optLength);
+    if (![1, 2].includes(command)) return { hasError: true };
     const isUDP = (command === 2);
-    const portIndex = 18 + optLength + 1;
-    const portRemote = view.getUint16(portIndex);   
-    const addressIndex = portIndex + 2;
-    const addressType = view.getUint8(addressIndex);    
+    const portRemote = view.getUint16(18 + optLength + 1);
+    const addressType = view.getUint8(20 + optLength);
     let addressRemote = '';
     let addressLength = 0;
-    let addressValueIndex = addressIndex + 1;    
+    let addressValueIndex = 21 + optLength;
     switch (addressType) {
         case 1:
             addressLength = 4;
@@ -136,8 +134,7 @@ function processVlessHeader(vlessBuffer, userID) {
                                   .join('.');
             break;
         case 2:
-            addressLength = view.getUint8(addressValueIndex);
-            addressValueIndex += 1;
+            addressLength = view.getUint8(addressValueIndex++);
             addressRemote = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
             break;
         case 3:
@@ -148,7 +145,7 @@ function processVlessHeader(vlessBuffer, userID) {
             break;
         default:
             return { hasError: true };
-    }    
+    }
     return {
         hasError: false,
         addressRemote,
