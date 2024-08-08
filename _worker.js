@@ -115,23 +115,47 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
     });
 }
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
-	let isCancelled = false;
-    return new ReadableStream({
-        start(controller) {
-            webSocket.addEventListener('message', event => !isCancelled && controller.enqueue(event.data));
-            webSocket.addEventListener('close', () => controller.close());
-            webSocket.addEventListener('error', err => controller.error(err));
-            const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-            if (error) controller.error(error);
-            else if (earlyData) controller.enqueue(earlyData);
-        },
-        cancel() {
-            isCancelled = true;
-            safeCloseWebSocket(webSocketServer);
-        }
-    });
+	let readableStreamCancel = false;
+	const stream = new ReadableStream({
+		start(controller) {
+			webSocketServer.addEventListener('message', (event) => {
+				if (readableStreamCancel) {
+					return;
+				}
+				const message = event.data;
+				controller.enqueue(message);
+			});
+			webSocketServer.addEventListener('close', () => {
+				safeCloseWebSocket(webSocketServer);
+				if (readableStreamCancel) {
+					return;
+				}
+				controller.close();
+			}
+			);
+			webSocketServer.addEventListener('error', (err) => {
+				controller.error(err);
+			}
+			);
+			const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
+			if (error) {
+				controller.error(error);
+			} else if (earlyData) {
+				controller.enqueue(earlyData);
+			}
+		},
+		pull(controller) {
+		},
+		cancel(reason) {
+			if (readableStreamCancel) {
+				return;
+			}
+			readableStreamCancel = true;
+			safeCloseWebSocket(webSocketServer);
+		}
+	});
+	return stream;
 }
-
 function processVlessHeader(
 	vlessBuffer,
 	userID
