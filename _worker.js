@@ -180,9 +180,11 @@ function processVlessHeader(vlessBuffer, userID) {
     }
     const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
     const command = new Uint8Array(vlessBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
+    let isUDP = (command === 2);
+    let portRemote = 443;
     let addressRemote = '';
     let rawDataIndex = 0;
-    if (![1, 2].includes(command)) {
+    if (command !== 1 && command !== 2) {
         return { hasError: true };
     }
     const portIndex = 18 + optLength + 1;
@@ -215,10 +217,10 @@ function processVlessHeader(vlessBuffer, userID) {
     return {
         hasError: false,
         addressRemote,
-        portRemote: 443,
+        portRemote,
         rawDataIndex: addressValueIndex + addressLength,
         vlessVersion: version,
-        isUDP: command === 2,
+        isUDP,
     };
 }
 
@@ -269,19 +271,20 @@ function safeCloseWebSocket(socket) {
     } catch (error) {}
 }
 
-const byteToHex = [];
-for (let i = 0; i < 256; ++i) {
-    byteToHex.push((i + 256).toString(16).slice(1));
-}
+const byteToHex = Array.from({ length: 256 }, (_, i) => 
+    i.toString(16).padStart(2, '0')
+);
 
 function unsafeStringify(arr, offset = 0) {
-    return (byteToHex[arr[offset + 0]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + "-" +
-            byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + "-" +
-            byteToHex[arr[offset + 6]] + byteToHex[arr[offset + 7]] + "-" +
-            byteToHex[arr[offset + 8]] + byteToHex[arr[offset + 9]] + "-" +
-            byteToHex[arr[offset + 10]] + byteToHex[arr[offset + 11]] +
-            byteToHex[arr[offset + 12]] + byteToHex[arr[offset + 13]] +
-            byteToHex[arr[offset + 14]] + byteToHex[arr[offset + 15]]).toLowerCase();
+    const hex = byteToHex;
+    const hexParts = [
+        arr.slice(offset, offset + 4),
+        arr.slice(offset + 4, offset + 6),
+        arr.slice(offset + 6, offset + 8),
+        arr.slice(offset + 8, offset + 10),
+        arr.slice(offset + 10, offset + 16)
+    ].map(part => part.map(byte => hex[byte]).join(''));
+    return hexParts.join('-').toLowerCase();
 }
 
 function stringify(arr, offset = 0) {
