@@ -52,12 +52,12 @@ async function vlessOverWSHandler(request) {
     const webSocketPair = new WebSocketPair();
     const [client, webSocket] = Object.values(webSocketPair);
     webSocket.accept();
-    let address = '';
     const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
     const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
     let remoteSocketWapper = { value: null };
     let udpStreamWrite = null;
     let isDns = false;
+    let address = '';
     readableWebSocketStream.pipeTo(new WritableStream({
         async write(chunk, controller) {
             if (isDns && udpStreamWrite) {
@@ -180,11 +180,9 @@ function processVlessHeader(vlessBuffer, userID) {
     }
     const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
     const command = new Uint8Array(vlessBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
-    let isUDP = (command === 2);
-    let portRemote = 443;
     let addressRemote = '';
     let rawDataIndex = 0;
-    if (command !== 1 && command !== 2) {
+    if (![1, 2].includes(command)) {
         return { hasError: true };
     }
     const portIndex = 18 + optLength + 1;
@@ -217,10 +215,10 @@ function processVlessHeader(vlessBuffer, userID) {
     return {
         hasError: false,
         addressRemote,
-        portRemote,
+        portRemote: 443,
         rawDataIndex: addressValueIndex + addressLength,
         vlessVersion: version,
-        isUDP,
+        isUDP: command === 2,
     };
 }
 
