@@ -52,12 +52,12 @@ async function vlessOverWSHandler(request) {
     const webSocketPair = new WebSocketPair();
     const [client, webSocket] = Object.values(webSocketPair);
     webSocket.accept();
+    let address = '';
     const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
     const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
     let remoteSocketWapper = { value: null };
     let udpStreamWrite = null;
     let isDns = false;
-    let address = '';
     readableWebSocketStream.pipeTo(new WritableStream({
         async write(chunk, controller) {
             if (isDns && udpStreamWrite) {
@@ -100,10 +100,7 @@ async function vlessOverWSHandler(request) {
             handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
         },
     })).catch((err) => {});
-    return new Response(null, {
-        status: 101,
-        webSocket: client,
-    });
+    return new Response(null, { status: 101, webSocket: client });
 }
 
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
@@ -148,9 +145,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
                 }
                 controller.close();
             });
-            webSocketServer.addEventListener('error', (err) => {
-                controller.error(err);
-            });
+            webSocketServer.addEventListener('error', err => controller.error(err));
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
             if (error) {
                 controller.error(error);
@@ -158,6 +153,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
                 controller.enqueue(earlyData);
             }
         },
+        pull(controller) {},
         cancel(reason) {
             if (readableStreamCancel) {
                 return;
@@ -244,9 +240,7 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
     } catch (error) {
         safeCloseWebSocket(webSocket);
     }
-    if (!hasIncomingData && retry) {
-        retry();
-    }
+    if (!hasIncomingData && retry) retry();
 }
 
 function base64ToArrayBuffer(base64Str) {
@@ -271,20 +265,16 @@ function safeCloseWebSocket(socket) {
     } catch (error) {}
 }
 
-const byteToHex = Array.from({ length: 256 }, (_, i) => 
-    i.toString(16).padStart(2, '0')
-);
+const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 256).toString(16).slice(1));
 
 function unsafeStringify(arr, offset = 0) {
-    const hex = byteToHex;
-    const hexParts = [
-        arr.slice(offset, offset + 4),
-        arr.slice(offset + 4, offset + 6),
-        arr.slice(offset + 6, offset + 8),
-        arr.slice(offset + 8, offset + 10),
-        arr.slice(offset + 10, offset + 16)
-    ].map(part => part.map(byte => hex[byte]).join(''));
-    return hexParts.join('-').toLowerCase();
+    return (byteToHex[arr[offset + 0]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + "-" +
+            byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + "-" +
+            byteToHex[arr[offset + 6]] + byteToHex[arr[offset + 7]] + "-" +
+            byteToHex[arr[offset + 8]] + byteToHex[arr[offset + 9]] + "-" +
+            byteToHex[arr[offset + 10]] + byteToHex[arr[offset + 11]] +
+            byteToHex[arr[offset + 12]] + byteToHex[arr[offset + 13]] +
+            byteToHex[arr[offset + 14]] + byteToHex[arr[offset + 15]]).toLowerCase();
 }
 
 function stringify(arr, offset = 0) {
@@ -297,14 +287,9 @@ function stringify(arr, offset = 0) {
 
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     let isVlessHeaderSent = false;
-    const quicClient = new QUIC({
-        remoteAddress: "1.1.1.1",
-        remotePort: 443,
-    });
+    const quicClient = new QUIC({ remoteAddress: "1.1.1.1", remotePort: 443 });
     await quicClient.connect();
-    quicClient.on('error', (error) => {
-        console.error(error);
-    });
+    quicClient.on('error', error => console.error(error));
     quicClient.on('data', (data) => {
         const udpSize = data.byteLength;
         const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, (udpSize) & 0xff]);
@@ -318,21 +303,10 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
         }
     });
     const writer = quicClient.writable.getWriter();
-    return {
-        write(chunk) {
-            writer.write(chunk);
-        }
-    };
+    return { write: chunk => writer.write(chunk) };
 }
 
 function getVLESSConfig(userID, hostName) {
-    const vlessMain = `vless://${userID}@${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}`;
     return `
-################################################################
-v2ray
----------------------------------------------------------------
-${vlessMain}
----------------------------------------------------------------
-################################################################
-`;
+vless://${userID}\u0040${hostName}:443?encryption=none&security=tls&sni=${hostName}&fp=randomized&type=ws&host=${hostName}&path=%2F%3Fed%3D2560#${hostName}`;
 }
