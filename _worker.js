@@ -174,35 +174,28 @@ function processVlessHeader(vlessBuffer, userID) {
     if (vlessBuffer.byteLength < 24) {
         return { hasError: true };
     }
-
     const version = new Uint8Array(vlessBuffer.slice(0, 1));
     const isValidUser = stringify(new Uint8Array(vlessBuffer.slice(1, 17))) === userID;
-
     if (!isValidUser) {
         return { hasError: true };
     }
-
     const optLength = new Uint8Array(vlessBuffer.slice(17, 18))[0];
     const command = new Uint8Array(vlessBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
     let isUDP = (command === 2);
     let portRemote = 443;
     let addressRemote = '';
     let rawDataIndex = 0;
-
     if (command !== 1 && command !== 2) {
         return { hasError: true };
     }
-
     const portIndex = 18 + optLength + 1;
     const portBuffer = vlessBuffer.slice(portIndex, portIndex + 2);
     portRemote = new DataView(portBuffer).getUint16(0);
-
     const addressIndex = portIndex + 2;
     const addressBuffer = new Uint8Array(vlessBuffer.slice(addressIndex, addressIndex + 1));
     const addressType = addressBuffer[0];
     let addressLength = 0;
     let addressValueIndex = addressIndex + 1;
-
     switch (addressType) {
         case 1:
             addressLength = 4;
@@ -222,7 +215,6 @@ function processVlessHeader(vlessBuffer, userID) {
         default:
             return { hasError: true };
     }
-
     return {
         hasError: false,
         addressRemote,
@@ -236,7 +228,6 @@ function processVlessHeader(vlessBuffer, userID) {
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
     let hasIncomingData = false;
     let vlessHeader = vlessResponseHeader;
-
     try {
         await remoteSocket.readable.pipeTo(new WritableStream({
             async write(chunk) {
@@ -254,7 +245,6 @@ async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, re
     } catch (error) {
         safeCloseWebSocket(webSocket);
     }
-
     if (!hasIncomingData && retry) {
         retry();
     }
