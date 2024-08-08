@@ -131,38 +131,40 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 }
 
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
-    let isCanceled = false;
-    const handleMessage = (event) => {
-        if (!isCanceled) {
-            const message = event.data;
-            controller.enqueue(message);
-        }
-    };
-    const handleClose = () => {
-        safeCloseWebSocket(webSocketServer);
-        if (!isCanceled) {
-            controller.close();
-        }
-    };
-    const handleError = (err) => {
-        controller.error(err);
-    };
-    const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
-    if (error) {
-        controller.error(error);
-    } else if (earlyData) {
-        controller.enqueue(earlyData);
-    }
     const stream = new ReadableStream({
         start(controller) {
+            const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
+            if (error) {
+                controller.error(error);
+                return;
+            }
+            if (earlyData) {
+                controller.enqueue(earlyData);
+            }
+            const handleMessage = (event) => {
+                const message = event.data;
+                controller.enqueue(message);
+            };
+            const handleClose = () => {
+                safeCloseWebSocket(webSocketServer);
+                controller.close();
+            };
+            const handleError = (err) => {
+                controller.error(err);
+            };
             webSocketServer.addEventListener('message', handleMessage);
             webSocketServer.addEventListener('close', handleClose);
             webSocketServer.addEventListener('error', handleError);
-        },
-        cancel(reason) {
-            if (!isCanceled) {
-                isCanceled = true;
+            this.cancel = () => {
+                webSocketServer.removeEventListener('message', handleMessage);
+                webSocketServer.removeEventListener('close', handleClose);
+                webSocketServer.removeEventListener('error', handleError);
                 safeCloseWebSocket(webSocketServer);
+            };
+        },
+        cancel() {
+            if (this.cancel) {
+                this.cancel();
             }
         }
     });
