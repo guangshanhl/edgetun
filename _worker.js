@@ -158,7 +158,6 @@ function processVlessHeader(vlessBuffer, userID) {
         isUDP,
     };
 }
-
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
     let hasIncomingData = false;
     let vlessHeader = vlessResponseHeader;
