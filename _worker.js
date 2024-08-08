@@ -231,7 +231,7 @@ function stringify(arr, offset = 0) {
 }
 async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     let isVlessHeaderSent = false;
-    const quicClient = new QUIC({ remoteAddress: "1.1.1.1", remotePort: 443 });
+    const quicClient = new QUIC({ remoteAddress: "8.8.8.8", remotePort: 443 });
     await quicClient.connect();
     quicClient.on('error', error => console.error(error));
     quicClient.on('data', (data) => {
