@@ -2,12 +2,9 @@ import { connect } from 'cloudflare:sockets';
 let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
 let proxyIP = '';
 function isValidUUID(uuid) {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(uuid);
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid);
 }
-if (!isValidUUID(userID)) {
-    throw new Error('uuid is not valid');
-}
+if (!isValidUUID(userID)) throw new Error('uuid is not valid');
 export default {
     async fetch(request, env, ctx) {
         try {
@@ -59,15 +56,7 @@ async function vlessOverWSHandler(request) {
                 writer.releaseLock();
                 return;
             }
-            const {
-                hasError,
-                message,
-                portRemote = 443,
-                addressRemote = '',
-                rawDataIndex,
-                vlessVersion = new Uint8Array([0, 0]),
-                isUDP,
-            } = processVlessHeader(chunk, userID);
+            const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             address = addressRemote;
             if (hasError) {
                 return;
@@ -116,23 +105,10 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
     });
 }
 function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
-    let readableStreamCancel = false;
     const stream = new ReadableStream({
         start(controller) {
-            webSocketServer.addEventListener('message', (event) => {
-                if (readableStreamCancel) {
-                    return;
-                }
-                const message = event.data;
-                controller.enqueue(message);
-            });
-            webSocketServer.addEventListener('close', () => {
-                safeCloseWebSocket(webSocketServer);
-                if (readableStreamCancel) {
-                    return;
-                }
-                controller.close();
-            });
+            webSocketServer.addEventListener('message', event => controller.enqueue(event.data));
+            webSocketServer.addEventListener('close', () => controller.close());
             webSocketServer.addEventListener('error', err => controller.error(err));
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
             if (error) {
@@ -141,11 +117,7 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
                 controller.enqueue(earlyData);
             }
         },
-        cancel(reason) {
-            if (readableStreamCancel) {
-                return;
-            }
-            readableStreamCancel = true;
+        cancel() {
             safeCloseWebSocket(webSocketServer);
         }
     });
