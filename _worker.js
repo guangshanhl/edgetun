@@ -36,31 +36,20 @@ export default {
     },
 };
 async function vlessOverWSHandler(request) {
-    const webSocketPair = new WebSocketPair();
-    const [client, webSocket] = Object.values(webSocketPair);
+    const [client, webSocket] = new WebSocketPair();
     webSocket.accept();
     let address = '';
-    const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
-    const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader);
-    let remoteSocketWapper = { value: null };
-    let udpStreamWrite = null;
     let isDns = false;
+    let udpStreamWrite = null;
+    const readableWebSocketStream = makeReadableWebSocketStream(webSocket, request.headers.get('sec-websocket-protocol'));
     readableWebSocketStream.pipeTo(new WritableStream({
-        async write(chunk, controller) {
+        async write(chunk) {
             if (isDns && udpStreamWrite) {
                 return udpStreamWrite(chunk);
             }
-            if (remoteSocketWapper.value) {
-                const writer = remoteSocketWapper.value.writable.getWriter();
-                await writer.write(chunk);
-                writer.releaseLock();
-                return;
-            }
             const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             address = addressRemote;
-            if (hasError) {
-                return;
-            }
+            if (hasError) return;
             if (isUDP) {
                 if (portRemote === 53) {
                     isDns = true;
@@ -74,11 +63,11 @@ async function vlessOverWSHandler(request) {
                 const { write } = await handleUDPOutBound(webSocket, vlessResponseHeader);
                 udpStreamWrite = write;
                 udpStreamWrite(rawClientData);
-                return;
+            } else {
+                handleTCPOutBound(addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
             }
-            handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader);
-        },
-    })).catch((err) => {});
+        }
+    })).catch(() => {});
     return new Response(null, { status: 101, webSocket: client });
 }
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
