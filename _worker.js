@@ -172,17 +172,22 @@ function processVlessHeader(vlessBuffer, userID) {
 }
 async function remoteSocketToWS(remoteSocket, webSocket, vlessResponseHeader, retry) {
     let hasIncomingData = false;
+    let vlessHeader = vlessResponseHeader;
     try {
         await remoteSocket.readable.pipeTo(new WritableStream({
             async write(chunk) {
                 hasIncomingData = true;
                 if (webSocket.readyState === WebSocket.OPEN) {
-                    webSocket.send(await new Blob([vlessResponseHeader, chunk]).arrayBuffer());
-                    vlessResponseHeader = null;
+                    if (vlessHeader) {
+                        webSocket.send(await new Blob([vlessHeader, chunk]).arrayBuffer());
+                        vlessHeader = null;
+                    } else {
+                        webSocket.send(chunk);
+                    }
                 }
             }
         }));
-    } catch {
+    } catch (error) {
         safeCloseWebSocket(webSocket);
     }
     if (!hasIncomingData && retry) retry();
