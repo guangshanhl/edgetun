@@ -18,12 +18,7 @@ export default {
                 const url = new URL(request.url);
                 switch (url.pathname) {
                     case '/':
-                        return new Response(JSON.stringify(request.cf, null, 4), {
-                            status: 200,
-                            headers: {
-                                "Alt-Svc": 'h3-23=":443"; ma=86400, h3-22=":443"; ma=86400, h3-21=":443"; ma=86400'
-                            }
-                        });
+                        return new Response(JSON.stringify(request.cf, null, 4), { status: 200 });
                     case `/${userID}`:
                         return new Response(getVLESSConfig(userID, request.headers.get('Host')), {
                             status: 200,
@@ -146,7 +141,6 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
                 controller.enqueue(earlyData);
             }
         },
-        pull(controller) {},
         cancel(reason) {
             if (readableStreamCancel) {
                 return;
