@@ -224,15 +224,17 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader) {
     let isVlessHeaderSent = false;
     const quicClient = new QUIC({ remoteAddress: "8.8.8.8", remotePort: 443 });
     await quicClient.connect();
-    quicClient.on('error', error => console.error(error));
+    const udpSizeBuffer = new Uint8Array(2);    
     quicClient.on('data', (data) => {
         const udpSize = data.byteLength;
-        const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, (udpSize) & 0xff]);
+        udpSizeBuffer[0] = (udpSize >> 8) & 0xff;
+        udpSizeBuffer[1] = udpSize & 0xff;    
         if (webSocket.readyState === WebSocket.OPEN) {
             if (isVlessHeaderSent) {
                 webSocket.send(new Blob([udpSizeBuffer, data]).arrayBuffer());
             } else {
-                webSocket.send(new Blob([vlessResponseHeader, udpSizeBuffer, data]).arrayBuffer());
+                const headerData = [vlessResponseHeader, udpSizeBuffer, data];
+                webSocket.send(new Blob(headerData).arrayBuffer());
                 isVlessHeaderSent = true;
             }
         }
