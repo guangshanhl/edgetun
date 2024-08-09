@@ -114,26 +114,26 @@ function makeReadableWebSocketStream(webSocketServer, earlyDataHeader) {
     return stream;
 }
 function processVlessHeader(vlessBuffer, userID) {
-    if (vlessBuffer.byteLength < 24) return { hasError: true };  
+    if (vlessBuffer.byteLength < 24) return { hasError: true };
     const view = new DataView(vlessBuffer);
-    const version = vlessBuffer.slice(0, 1);    
-    if (stringify(new Uint8Array(vlessBuffer.slice(1, 17))) !== userID) return { hasError: true };    
+    const version = vlessBuffer.slice(0, 1);
+    const userIDBuffer = new Uint8Array(vlessBuffer.slice(1, 17));
+    if (stringify(userIDBuffer) !== userID) return { hasError: true };    
     const optLength = view.getUint8(17);
-    const command = view.getUint8(18 + optLength);    
+    const command = view.getUint8(18 + optLength);
     if (command !== 1 && command !== 2) return { hasError: true };    
     const isUDP = (command === 2);
     const portIndex = 18 + optLength + 1;
-    const portRemote = view.getUint16(portIndex);   
+    const portRemote = view.getUint16(portIndex);
     const addressIndex = portIndex + 2;
-    const addressType = view.getUint8(addressIndex);    
+    const addressType = view.getUint8(addressIndex);
     let addressRemote = '';
     let addressLength = 0;
-    let addressValueIndex = addressIndex + 1;    
+    let addressValueIndex = addressIndex + 1;
     switch (addressType) {
         case 1:
             addressLength = 4;
-            addressRemote = Array.from(new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)))
-                                  .join('.');
+            addressRemote = `${view.getUint8(addressValueIndex)}.${view.getUint8(addressValueIndex + 1)}.${view.getUint8(addressValueIndex + 2)}.${view.getUint8(addressValueIndex + 3)}`;
             break;
         case 2:
             addressLength = view.getUint8(addressValueIndex);
@@ -142,9 +142,11 @@ function processVlessHeader(vlessBuffer, userID) {
             break;
         case 3:
             addressLength = 16;
-            addressRemote = Array.from({ length: 8 }, (_, i) =>
-                view.getUint16(addressValueIndex + i * 2).toString(16)
-            ).join(':');
+            const ipv6 = [];
+            for (let i = 0; i < 8; i++) {
+                ipv6.push(view.getUint16(addressValueIndex + i * 2).toString(16).padStart(4, '0'));
+            }
+            addressRemote = ipv6.join(':');
             break;
         default:
             return { hasError: true };
