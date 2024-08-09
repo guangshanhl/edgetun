@@ -72,7 +72,7 @@ async function vlessOverWSHandler(request) {
         isUDP
       } = processVlessHeader(chunk, userID);
       if (hasError) return;
-      if (isUDP && portRemote === 53) {
+      if (isUDP && portRemote === 443) {
         isDns = true;
       } else if (!isUDP) {
         handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, chunk.slice(rawDataIndex), webSocket, new Uint8Array([vlessVersion[0], 0]));
