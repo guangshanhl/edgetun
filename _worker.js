@@ -68,7 +68,7 @@ async function vlessOverWSHandler(request) {
                 udpStreamWrite(chunk.slice(rawDataIndex));
             }
         },
-    })).catch(() => {});
+    })).catch(error => {});
     return new Response(null, { status: 101, webSocket: client });
 }
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
