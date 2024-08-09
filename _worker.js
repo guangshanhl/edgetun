@@ -72,25 +72,33 @@ async function vlessOverWSHandler(request) {
     return new Response(null, { status: 101, webSocket: client });
 }
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
+    const connectionPool = new Map();
+    const connectWithTimeout = async (address, port, timeout = 5000) => {
+        return Promise.race([
+            connect({ hostname: address, port, protocol: 'quic' }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), timeout))
+        ]);
+    };
     const connectAndWrite = async (address, port) => {
-        if (remoteSocket.value && !remoteSocket.value.closed) {
-            const writer = remoteSocket.value.writable.getWriter();
-            await writer.write(rawClientData);
-            writer.releaseLock();
-            return remoteSocket.value;
-        } else {
-            const quicSocket = connect({ hostname: address, port, protocol: 'quic' });
-            remoteSocket.value = quicSocket;
-            const writer = quicSocket.writable.getWriter();
-            await writer.write(rawClientData);
-            writer.releaseLock();
-            return quicSocket;
+        const key = `${address}:${port}`;
+        if (connectionPool.has(key)) {
+            const quicSocket = connectionPool.get(key);
+            if (!quicSocket.closed) {
+                const writer = quicSocket.writable.getWriter();
+                await writeInChunks(writer, rawClientData);
+                return quicSocket;
+            }
         }
+        const quicSocket = await connectWithTimeout(address, port);
+        connectionPool.set(key, quicSocket);
+        const writer = quicSocket.writable.getWriter();
+        await writeInChunks(writer, rawClientData);
+        return quicSocket;
     };
     const quicSocket = await connectAndWrite(addressRemote, portRemote);
     remoteSocketToWS(quicSocket, webSocket, vlessResponseHeader, async () => {
         const fallbackSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
-        fallbackSocket.closed.catch(() => {}).finally(() => safeCloseWebSocket(webSocket));
+        safeClose(fallbackSocket, webSocket);
         remoteSocketToWS(fallbackSocket, webSocket, vlessResponseHeader);
     });
 }
