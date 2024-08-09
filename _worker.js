@@ -46,7 +46,8 @@ async function vlessOverWSHandler(request) {
     readableWebSocketStream.pipeTo(new WritableStream({
         async write(chunk) {
             if (isDns && udpStreamWrite) {
-                return udpStreamWrite(chunk);
+                udpStreamWrite(chunk);
+                return;
             }
             if (remoteSocketWapper.value) {
                 const writer = remoteSocketWapper.value.writable.getWriter();
@@ -56,19 +57,21 @@ async function vlessOverWSHandler(request) {
             }
             const { hasError, addressRemote, portRemote, rawDataIndex, vlessVersion, isUDP } = processVlessHeader(chunk, userID);
             if (hasError) return;
-            if (isUDP && portRemote === 53) {
-                isDns = true;
-            } else if (!isUDP) {
+
+            if (isUDP) {
+                if (portRemote === 53) {
+                    isDns = true;
+                } else {
+                    const { write } = await handleUDPOutBound(webSocket, new Uint8Array([vlessVersion[0], 0]));
+                    udpStreamWrite = write;
+                    udpStreamWrite(chunk.slice(rawDataIndex));
+                }
+            } else {
                 handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, chunk.slice(rawDataIndex), webSocket, new Uint8Array([vlessVersion[0], 0]));
-                return;
-            }
-            if (isDns) {
-                const { write } = await handleUDPOutBound(webSocket, new Uint8Array([vlessVersion[0], 0]));
-                udpStreamWrite = write;
-                udpStreamWrite(chunk.slice(rawDataIndex));
             }
         },
     })).catch(() => {});
+
     return new Response(null, { status: 101, webSocket: client });
 }
 async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader) {
@@ -130,24 +133,23 @@ function processVlessHeader(vlessBuffer, userID) {
     let addressLength = 0;
     let addressValueIndex = addressIndex + 1;    
     switch (addressType) {
-        case 1:
-            addressLength = 4;
-            addressRemote = Array.from(new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength)))
-                                  .join('.');
-            break;
-        case 2:
-            addressLength = view.getUint8(addressValueIndex);
-            addressValueIndex += 1;
-            addressRemote = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
-            break;
-        case 3:
-            addressLength = 16;
-            addressRemote = Array.from({ length: 8 }, (_, i) =>
-                view.getUint16(addressValueIndex + i * 2).toString(16)
-            ).join(':');
-            break;
-        default:
-            return { hasError: true };
+    case 1:
+        addressLength = 4;
+        addressRemote = [...new Uint8Array(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength))]
+                          .join('.');
+        break;
+    case 2:
+        addressLength = view.getUint8(addressValueIndex++);
+        addressRemote = new TextDecoder().decode(vlessBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
+        break;
+    case 3:
+        addressLength = 16;
+        addressRemote = [...Array(8)]
+                          .map((_, i) => view.getUint16(addressValueIndex + i * 2).toString(16).padStart(4, '0'))
+                          .join(':');
+        break;
+    default:
+        return { hasError: true };
     }    
     return {
         hasError: false,
